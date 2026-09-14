@@ -3,7 +3,9 @@
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { loadConfigNative } from '$lib/config';
+  import pkg from '../../package.json';
   let { children } = $props();
+  const appVersion = pkg.version;
 
   const themes = ['default','rose-pine','rose-pine-moon','rose-pine-dawn','catppuccin-mocha','catppuccin-macchiato','catppuccin-frappe','catppuccin-latte'];
   const fonts = ['inter','jetbrains','geist','space','manrope','sora'];
@@ -55,7 +57,7 @@
       <div class="h-7 w-7 rounded-md bg-primary flex items-center justify-center text-primary-foreground font-black text-[11px] shrink-0">NMS</div>
       {#if !collapsed}
         <div class="leading-tight min-w-0">
-          <div class="text-sm font-semibold tracking-tight truncate">NoModsSky</div>
+          <div class="text-sm font-semibold tracking-tight truncate">NoModsSky <span class="text-[11px] font-normal text-muted-foreground">v{appVersion}</span></div>
           <div class="text-[11px] text-muted-foreground">Mod Manager</div>
         </div>
       {/if}
