@@ -1,77 +1,90 @@
-# NoModsSky — No Man's Sky Mod Manager
+<!-- <div align="center">
+  <img src="static/nms_logo.svg" alt="NoModsSky Banner" width="100%">
+</div> -->
 
-Manage your No Man's Sky mods without the hassle. Finds your game, lets
-you install mods, turn them on and off, reorder them, and keep different
-profiles.
+<br/>
 
-## What it does
+<div align="center">
+  <img src="src-tauri/icons/icon.png" alt="NoModsSky Logo" width="96" height="96">
+</div>
 
-- **Finds your game automatically** — checks your Steam libraries. If it
-  can't find it, pick the folder in Settings.
-- **Add mods** — drop `.pak` files, folders, or `.zip` archives (even zips
-  containing a `.pak` or a folder) onto the window, or use **Add files /
-  Add folder**. Bulk add supported — auto-detects zip contents and skips
-  duplicates.
-- **Import existing mods** — pulls in anything already in `GAMEDATA/MODS`
-  with one click (**Import** → Copy or Move).
-- **Enable / disable & reorder** — click to select (Ctrl/Cmd to add, Shift
-  for range, click empty space or Esc to clear), double-click to toggle,
-  drag with the blue line to place before/after, or use **Auto** to sort by
-  type and name. Bottom in list wins when mods overlap.
-- **Search & filter** — filter by Enabled/Disabled and search by name.
-- **One-click Deploy / Purge** — **Deploy** applies enabled mods in order
-  (symlinks on Linux, copies on Windows if needed). **Purge** clears deployed
-  mods from `GAMEDATA/MODS`.
-- **Profiles** — keep separate mod sets for different saves. Create,
-  duplicate, rename, delete, and switch on the Profiles page.
-- **Customization** — change theme (Default, Rose Pine, Rose Pine
-  Moon/Dawn, Catppuccin Mocha/Macchiato/Frappe/Latte) and font (Inter,
-  Geist, Space Grotesk, etc.) in Settings. Applies instantly.
-- **Quick actions** — open your `GAMEDATA/MODS` or store folder, and
-  toggle all mods off via `DISABLEMODS.txt`.
+<h1 align="center">NoModsSky</h1>
 
-## Download
+<p align="center">
+  <strong>A lightweight, "native" No Man's Sky mod manager</strong>
+  <br/>
+  Built with Tauri v2, SvelteKit, and Rust.
+  <br/>
+  No Electron. No accounts. Just mods.
+</p>
 
-Get the latest release for your system from
-[**Releases**](https://github.com/TheGloved1/NoModsSky/releases) on GitHub:
+<p align="center">
+  <a href="#features">Features</a> •
+  <a href="#how-its-different">How It's Different</a> •
+  <a href="#getting-started">Getting Started</a> •
+  <a href="#tech-stack">Tech Stack</a> •
+  <a href="#license">License</a>
+</p>
 
-- **Windows** — `.msi` or `.exe`
-- **Linux** — `.deb` or `.AppImage`
-- **macOS** — `.dmg`
+---
 
-Just download, install, and launch. No setup.
+## Features
 
-## How to use
+- **Automatic game detection** — Checks your Steam libraries for No Man's Sky. If it can't find it, a startup dialog (or Settings → Game) lets you pick the folder yourself.
+- **Add mods your way** — Drop `.pak` files, folders, or `.zip` archives onto the window, or use **Add files / Add folder**. Bulk add supported — zip contents are auto-detected (even zips containing a single `.pak` or folder) and duplicates are skipped.
+- **Import existing mods** — Pulls in anything already in `GAMEDATA/MODS` with one click (**Import** → Copy or Move).
+- **Enable / disable & reorder** — Click to select (`Ctrl`/`Cmd` to add, `Shift` for range, click empty space or `Esc` to clear), double-click to toggle, drag with the placement line to reorder, or use **Auto** to sort by type and name. Bottom in list wins when mods overlap.
+- **Search & filter** — Filter by Enabled/Disabled and search by name.
+- **Profiles** — Keep separate mod sets for different saves. Create, duplicate, rename, delete, and switch on the Profiles page.
+- **Customization** — Change theme (Default, Rose Pine, Rose Pine Moon/Dawn, Catppuccin Mocha/Macchiato/Frappe/Latte) and font (Inter, Geist, Space Grotesk, etc.) in Settings. Applies instantly.
 
-1. **Launch** — it shows your game path if found. If not, go to
-   **Settings → Game** and choose your `No Man's Sky` folder.
-2. **Add or Import** — drag `.pak`/`.zip`/folders onto the window, or
-   click **Add files / Add folder**, or **Import** to bring in mods already in
-   the game folder.
-3. **Select & reorder** — click to select, `Ctrl`/`Cmd` or `Shift` for
-   multi, drag with the line to reorder, **Auto** to sort, double-click to
-   toggle a mod.
-4. **Deploy** — click **Deploy** to apply the enabled mods. Close the game first.
-5. **Profiles** — open **Profiles** to create or switch sets. Each profile
-   remembers order and enabled states.
+## Extras
 
-## Where are my mods?
+### Cross-platform
 
-- **Store** — `~/.local/share/nms-mod-manager/mods` (Linux) or the
-  equivalent app data folder on Windows/macOS. This is where NoModsSky keeps
-  your mods.
-- **Game mods folder** — `.../No Man's Sky/GAMEDATA/MODS` — this is what
-  NoModsSky deploys to.
+Available for **Windows** (MSI + NSIS), **Linux** (deb + AppImage + rpm), and **macOS** (DMG + app bundle).
 
-## Need help?
+---
 
-- Close No Man's Sky before deploying. Steam Cloud can overwrite —
-  disable briefly or keep a backup.
-- If a mod doesn't show up, check that it's enabled and that all mods
-  aren't disabled (global toggle).
-- Drop a `.zip` that contains a single `.pak` or folder? NoModsSky handles
-  it automatically.
+## Getting Started
+
+### Prerequisites
+
+- Windows, Linux, or macOS
+
+### Installation
+
+1. Download the latest installer for your platform from [Releases](https://github.com/TheGloved1/NoModsSky/releases) or [Downloads](https://gloved.dev/nomodssky/download)
+2. Run the installer
+3. Launch NoModsSky — if your game isn't found automatically, pick your `No Man's Sky` folder when prompted
+
+### Building from Source
+
+```bash
+bun install
+bun run sync-version
+bun tauri build
+```
+
+Requires [Bun](https://bun.sh/) and [Rust](https://www.rust-lang.org/).
+
+---
+
+## Tech Stack
+
+| Layer             | Technology                                      |
+| ----------------- | ----------------------------------------------- |
+| Desktop Framework | [Tauri](https://v2.tauri.app/) (Rust backend)   |
+| Frontend          | SvelteKit + Svelte 5 + TypeScript               |
+| UI Components     | [shadcn-svelte](https://www.shadcn-svelte.com/) |
+| Styling           | Tailwind CSS v4                                 |
+| State             | Tauri Store plugin + Svelte stores              |
+| Build Tool        | Vite                                            |
+| Package Manager   | Bun                                             |
+| License           | MIT                                             |
+
+---
 
 ## License
 
-MIT
+- MIT — NoModsSky is free and open-source software
