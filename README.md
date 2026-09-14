@@ -11,11 +11,7 @@
 <h1 align="center">NoModsSky</h1>
 
 <p align="center">
-  <strong>A lightweight, "native" No Man's Sky mod manager</strong>
-  <br/>
-  Built with Tauri v2, SvelteKit, and Rust.
-  <br/>
-  No Electron. No accounts. Just mods.
+  <strong>A simple cross-platform No Man's Sky mod manager</strong>
 </p>
 
 <p align="center">
