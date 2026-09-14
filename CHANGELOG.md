@@ -1,3 +1,9 @@
+## [26.9.3] - 2026-09-14
+
+### Added
+
+- **ui**: show app version in expanded sidebar
+
 ## [26.9.2] - 2026-09-14
 
 ### Fixed
