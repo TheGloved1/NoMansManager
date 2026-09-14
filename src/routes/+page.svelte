@@ -377,41 +377,6 @@
     </div>
   </div>
 
-  {#if selectedIds.size > 0}
-    <div
-      class="h-9 shrink-0 flex items-center gap-2 px-3 bg-muted border-b text-xs"
-    >
-      <span class="font-medium">{selectedIds.size} selected</span>
-      <div class="h-4 w-px bg-border"></div>
-      <Button
-        variant="outline"
-        size="xs"
-        onclick={async () => {
-          for (const id of [...selectedIds])
-            if (profile) profile.enabled[id] = true;
-          if (profile) await api.saveProfile(profile);
-          await refreshMods();
-        }}>Enable</Button
-      >
-      <Button
-        variant="outline"
-        size="xs"
-        onclick={async () => {
-          for (const id of [...selectedIds])
-            if (profile) profile.enabled[id] = false;
-          if (profile) await api.saveProfile(profile);
-          await refreshMods();
-        }}>Disable</Button
-      >
-      <Button variant="destructive" size="xs" onclick={removeSelected}
-        >Remove</Button
-      >
-      <Button variant="ghost" size="xs" class="ml-auto" onclick={handleClear}
-        >Clear</Button
-      >
-    </div>
-  {/if}
-
   <div class="h-10 shrink-0 flex items-center gap-2 px-3 border-b bg-muted/30">
     <Select.Root
       type="single"
@@ -586,6 +551,41 @@
       {/if}
     </div>
   </div>
+
+  {#if selectedIds.size > 0}
+    <div
+      class="h-9 shrink-0 flex items-center gap-2 px-3 bg-muted border-y text-xs"
+    >
+      <span class="font-medium">{selectedIds.size} selected</span>
+      <div class="h-4 w-px bg-border"></div>
+      <Button
+        variant="outline"
+        size="xs"
+        onclick={async () => {
+          for (const id of [...selectedIds])
+            if (profile) profile.enabled[id] = true;
+          if (profile) await api.saveProfile(profile);
+          await refreshMods();
+        }}>Enable</Button
+      >
+      <Button
+        variant="outline"
+        size="xs"
+        onclick={async () => {
+          for (const id of [...selectedIds])
+            if (profile) profile.enabled[id] = false;
+          if (profile) await api.saveProfile(profile);
+          await refreshMods();
+        }}>Disable</Button
+      >
+      <Button variant="destructive" size="xs" onclick={removeSelected}
+        >Remove</Button
+      >
+      <Button variant="ghost" size="xs" class="ml-auto" onclick={handleClear}
+        >Clear</Button
+      >
+    </div>
+  {/if}
 
   <div class="h-21.5 shrink-0 border-t bg-card p-3">
     <div
