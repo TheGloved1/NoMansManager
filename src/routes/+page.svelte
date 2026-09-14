@@ -377,37 +377,6 @@
     </div>
   </div>
 
-  <div class="h-10 shrink-0 flex items-center gap-2 px-3 border-b bg-muted/30">
-    <Select.Root
-      type="single"
-      value={statusFilter}
-      onValueChange={(v: string) => (statusFilter = v ?? "All")}
-    >
-      <Select.Trigger class="h-7 w-32.5 bg-background text-xs">
-        <Select.Value placeholder="All" />
-      </Select.Trigger>
-      <Select.Content>
-        <Select.Item value="All">All</Select.Item>
-        <Select.Item value="Enabled">Enabled</Select.Item>
-        <Select.Item value="Disabled">Disabled</Select.Item>
-      </Select.Content>
-    </Select.Root>
-    <div class="flex-1 relative max-w-sm">
-      <Input
-        placeholder="Search mods…"
-        bind:value={filter}
-        class="h-7 pl-7 text-xs"
-      />
-      <span
-        class="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs"
-        >⌕</span
-      >
-    </div>
-    <span class="hidden md:inline text-xs text-muted-foreground ml-auto"
-      >{filtered.length} shown</span
-    >
-  </div>
-
   <div
     class="flex-1 overflow-auto"
     role="button"
@@ -586,6 +555,37 @@
       >
     </div>
   {/if}
+
+  <div class="h-10 shrink-0 flex items-center gap-2 px-3 border-t bg-muted/30">
+    <Select.Root
+      type="single"
+      value={statusFilter}
+      onValueChange={(v: string) => (statusFilter = v ?? "All")}
+    >
+      <Select.Trigger class="h-7 w-32.5 bg-background text-xs">
+        <Select.Value placeholder="All" />
+      </Select.Trigger>
+      <Select.Content>
+        <Select.Item value="All">All</Select.Item>
+        <Select.Item value="Enabled">Enabled</Select.Item>
+        <Select.Item value="Disabled">Disabled</Select.Item>
+      </Select.Content>
+    </Select.Root>
+    <div class="flex-1 relative max-w-sm">
+      <Input
+        placeholder="Search mods…"
+        bind:value={filter}
+        class="h-7 pl-7 text-xs"
+      />
+      <span
+        class="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs"
+        >⌕</span
+      >
+    </div>
+    <span class="hidden md:inline text-xs text-muted-foreground ml-auto"
+      >{filtered.length} shown</span
+    >
+  </div>
 
   <div class="h-21.5 shrink-0 border-t bg-card p-3">
     <div
