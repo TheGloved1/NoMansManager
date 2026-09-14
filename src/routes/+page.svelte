@@ -30,6 +30,8 @@
   let draggedId: string | null = $state(null);
   let dragOverId: string | null = $state(null);
   let dragOverPos: "before" | "after" | null = $state(null);
+  let showRemoveConfirm = $state(false);
+  let removeConfirmCount = $state(0);
 
   function sizeStr(b: number) {
     if (b > 1024 * 1024) return `${(b / 1024 / 1024).toFixed(1)} MB`;
@@ -240,7 +242,6 @@
   }
   async function removeSelected() {
     if (!profile || !selectedIds.size) return;
-    if (!confirm(`Remove ${selectedIds.size} mod(s)?`)) return;
     for (const id of [...selectedIds]) {
       profile.mod_order = profile.mod_order.filter((x) => x !== id);
       delete profile.enabled[id];
@@ -249,8 +250,14 @@
     await api.saveProfile(profile);
     selectedIds = new Set();
     await refreshMods();
+    showRemoveConfirm = false;
   }
 
+  function openRemoveConfirm() {
+    if (!selectedIds.size) return;
+    removeConfirmCount = selectedIds.size;
+    showRemoveConfirm = true;
+  }
 
   let filtered = $derived(
     mods.filter((m) => {
@@ -510,7 +517,7 @@
                   onclick={(e) => {
                     e.stopPropagation();
                     handleSelect(mod.id, new MouseEvent("click"));
-                    removeSelected();
+                    openRemoveConfirm();
                   }}>Remove</Button
                 >
               </div>
@@ -547,7 +554,7 @@
           await refreshMods();
         }}>Disable</Button
       >
-      <Button variant="destructive" size="xs" onclick={removeSelected}
+      <Button variant="destructive" size="xs" onclick={openRemoveConfirm}
         >Remove</Button
       >
       <Button variant="ghost" size="xs" class="ml-auto" onclick={handleClear}
@@ -642,6 +649,23 @@
           >Retry auto-detect</Button
         >
         <Button onclick={pickGamePathStartup}>Choose folder…</Button>
+      </Dialog.Footer>
+    </Dialog.Content>
+  </Dialog.Root>
+
+  <Dialog.Root bind:open={showRemoveConfirm}>
+    <Dialog.Content class="sm:max-w-md">
+      <Dialog.Header>
+        <Dialog.Title>Remove mods</Dialog.Title>
+        <Dialog.Description>
+          {removeConfirmCount === 1
+            ? "Are you sure you want to remove this mod? This action cannot be undone."
+            : `Are you sure you want to remove ${removeConfirmCount} mods? This action cannot be undone.`}
+        </Dialog.Description>
+      </Dialog.Header>
+      <Dialog.Footer>
+        <Button variant="ghost" onclick={() => (showRemoveConfirm = false)}>Cancel</Button>
+        <Button variant="destructive" onclick={removeSelected}>Remove</Button>
       </Dialog.Footer>
     </Dialog.Content>
   </Dialog.Root>
