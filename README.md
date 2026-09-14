@@ -16,7 +16,7 @@
 
 <p align="center">
   <a href="#features">Features</a> •
-  <a href="#how-its-different">How It's Different</a> •
+  <a href="#cross=platform">Cross=platform</a> •
   <a href="#getting-started">Getting Started</a> •
   <a href="#tech-stack">Tech Stack</a> •
   <a href="#license">License</a>
@@ -34,9 +34,7 @@
 - **Profiles** — Keep separate mod sets for different saves. Create, duplicate, rename, delete, and switch on the Profiles page.
 - **Customization** — Change theme (Default, Rose Pine, Rose Pine Moon/Dawn, Catppuccin Mocha/Macchiato/Frappe/Latte) and font (Inter, Geist, Space Grotesk, etc.) in Settings. Applies instantly.
 
-## Extras
-
-### Cross-platform
+## Cross-platform
 
 Available for **Windows** (MSI + NSIS), **Linux** (deb + AppImage + rpm), and **macOS** (DMG + app bundle).
 
