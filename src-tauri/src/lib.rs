@@ -335,10 +335,8 @@ fn find_nms_install_inner(manual: Option<String>) -> Option<PathBuf> {
                 if cand.join("GAMEDATA/PCBANKS/NMSARC.globals.pak").exists() {
                     return Some(cand);
                 }
-                if cand.file_name().map(|n| n == "No Man's Sky").unwrap_or(false) && cand.exists() {
-                    if cand.join("GAMEDATA").exists() {
-                        return Some(cand);
-                    }
+                if cand.file_name().map(|n| n == "No Man's Sky").unwrap_or(false) && cand.exists() && cand.join("GAMEDATA").exists() {
+                    return Some(cand);
                 }
             }
             if p.is_dir() && p.parent().map(|pr| pr.join("PCBANKS").exists()).unwrap_or(false) {
@@ -402,11 +400,7 @@ fn find_nms_install_inner(manual: Option<String>) -> Option<PathBuf> {
             }
         }
     }
-    for f in fallbacks {
-        if f.exists() && f.join("GAMEDATA/PCBANKS/NMSARC.globals.pak").exists() {
-            return Some(f);
-        }
-    }
+    return fallbacks.into_iter().find(|f| f.exists() && f.join("GAMEDATA/PCBANKS/NMSARC.globals.pak").exists());
     #[cfg(windows)]
     {
         for drive in ["C:", "D:", "E:", "F:"] {
@@ -459,7 +453,7 @@ fn scan_store() -> Vec<Mod> {
     let mut mods = Vec::new();
     if let Ok(entries) = fs::read_dir(&store) {
         let mut children: Vec<PathBuf> = entries.filter_map(|e| e.ok().map(|x| x.path())).collect();
-        children.sort_by(|a, b| a.file_name().unwrap_or_default().to_string_lossy().to_lowercase().cmp(&b.file_name().unwrap_or_default().to_string_lossy().to_lowercase()));
+        children.sort_by_key(|a| a.file_name().unwrap_or_default().to_string_lossy().to_lowercase());
         for child in children {
             if child.file_name().map(|n| n.to_string_lossy().starts_with('.')).unwrap_or(false) {
                 continue;
@@ -727,7 +721,7 @@ fn load_profile_inner(name: &str) -> Profile {
     // create
     let store_mods = scan_store();
     let mut order: Vec<String> = store_mods.iter().map(|m| m.id.clone()).collect();
-    order.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    order.sort_by_key(|a| a.to_lowercase());
     let enabled = store_mods.iter().map(|m| (m.id.clone(), true)).collect();
     let prof = Profile { name: name.to_string(), mod_order: order, enabled };
     let _ = save_profile_inner(&prof);
@@ -869,7 +863,7 @@ fn create_profile(name: String, clone_from: Option<String>) -> Result<Profile, S
     } else {
         let store_mods = scan_store();
         let mut order: Vec<String> = store_mods.iter().map(|m| m.id.clone()).collect();
-        order.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+        order.sort_by_key(|a| a.to_lowercase());
         let enabled = store_mods.iter().map(|m| (m.id.clone(), true)).collect();
         Profile { name: name.clone(), mod_order: order, enabled }
     };
@@ -949,12 +943,12 @@ fn load_config_from_store(app: &tauri::AppHandle) -> AppConfig {
             if let Ok(t) = fs::read_to_string(&legacy) {
                 if let Ok(legacy_cfg) = serde_json::from_str::<AppConfig>(&t) {
                     // seed store
-                    let _ = store.set("game_path", serde_json::to_value(&legacy_cfg.game_path).unwrap());
-                    let _ = store.set("deploy_mode", serde_json::to_value(&legacy_cfg.deploy_mode).unwrap());
-                    let _ = store.set("active_profile", serde_json::to_value(&legacy_cfg.active_profile).unwrap());
-                    let _ = store.set("global_disable", serde_json::to_value(legacy_cfg.global_disable).unwrap());
-                    let _ = store.set("theme", serde_json::to_value(&legacy_cfg.theme).unwrap());
-                    let _ = store.set("font", serde_json::to_value(&legacy_cfg.font).unwrap());
+                    store.set("game_path", serde_json::to_value(&legacy_cfg.game_path).unwrap());
+                    store.set("deploy_mode", serde_json::to_value(&legacy_cfg.deploy_mode).unwrap());
+                    store.set("active_profile", serde_json::to_value(&legacy_cfg.active_profile).unwrap());
+                    store.set("global_disable", serde_json::to_value(legacy_cfg.global_disable).unwrap());
+                    store.set("theme", serde_json::to_value(&legacy_cfg.theme).unwrap());
+                    store.set("font", serde_json::to_value(&legacy_cfg.font).unwrap());
                     return legacy_cfg;
                 }
             }

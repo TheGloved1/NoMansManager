@@ -211,11 +211,6 @@
     if (!p) return;
     await handleAddPaths(Array.isArray(p) ? (p as string[]) : [p as string]);
   }
-  async function addModsFolder() {
-    const p = await open({ directory: true, multiple: true });
-    if (!p) return;
-    await handleAddPaths(Array.isArray(p) ? (p as string[]) : [p as string]);
-  }
   async function doImport(mv: boolean) {
     if (!modsDir) return;
     const r = await api.importMods(modsDir, mv);
@@ -255,53 +250,7 @@
     selectedIds = new Set();
     await refreshMods();
   }
-  let newProfileName = $state("");
-  async function createProfile(name: string) {
-    const n = name.trim().replace(/\s+/g, "_");
-    if (!n) return;
-    await api.createProfile(n, profile?.name || null);
-    profiles = await api.listProfiles();
-    profile = await api.loadProfile(n);
-    if (config) {
-      config.active_profile = n;
-      try {
-        await saveConfigNative(config);
-      } catch {
-        await api.saveConfig(config);
-      }
-    }
-    await refreshMods();
-  }
-  async function switchProfile(name: string) {
-    if (!config) return;
-    config.active_profile = name;
-    try {
-      await saveConfigNative(config);
-    } catch {
-      await api.saveConfig(config);
-    }
-    profile = await api.loadProfile(name);
-    await refreshMods();
-  }
-  async function deleteProfile(name: string) {
-    if (profiles.length <= 1) return;
-    if (!confirm(`Delete profile '${name}'?`)) return;
-    await api.deleteProfile(name);
-    profiles = await api.listProfiles();
-    if (profile?.name === name) {
-      const next = profiles[0];
-      if (config) {
-        config.active_profile = next;
-        try {
-          await saveConfigNative(config);
-        } catch {
-          await api.saveConfig(config);
-        }
-      }
-      profile = await api.loadProfile(next);
-    }
-    await refreshMods();
-  }
+
 
   let filtered = $derived(
     mods.filter((m) => {
@@ -469,7 +418,7 @@
       value={statusFilter}
       onValueChange={(v: string) => (statusFilter = v ?? "All")}
     >
-      <Select.Trigger class="h-7 w-[130px] bg-background text-xs">
+      <Select.Trigger class="h-7 w-32.5 bg-background text-xs">
         <Select.Value placeholder="All" />
       </Select.Trigger>
       <Select.Content>
@@ -496,11 +445,19 @@
 
   <div
     class="flex-1 overflow-auto"
+    role="button"
+    tabindex="0"
     onclick={(e) => {
       if (e.target === e.currentTarget) handleClear();
     }}
+    onkeydown={(e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handleClear();
+      }
+    }}
   >
-    <div class="min-w-[640px]">
+    <div class="min-w-160">
       <div
         class="sticky top-0 z-10 grid grid-cols-[140px_1fr_90px_120px] gap-2 px-3 py-2 bg-muted border-b text-[11px] font-medium tracking-wide text-muted-foreground"
       >
@@ -541,6 +498,7 @@
                 selectedIds.has(mod.id))}
             <div
               role="listitem"
+              tabindex="0"
               draggable="true"
               ondragstart={(e) => {
                 draggedId = mod.id;
@@ -571,6 +529,12 @@
                 dragOverId = null;
               }}
               onclick={(e) => handleSelect(mod.id, e as MouseEvent)}
+              onkeydown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleSelect(mod.id, e as unknown as MouseEvent);
+                }
+              }}
               ondblclick={() => {
                 const cur = profile?.enabled[mod.id] ?? true;
                 if (profile) {
@@ -623,7 +587,7 @@
     </div>
   </div>
 
-  <div class="h-[86px] shrink-0 border-t bg-card p-3">
+  <div class="h-21.5 shrink-0 border-t bg-card p-3">
     <div
       class="h-full rounded-lg border border-dashed flex flex-col items-center justify-center gap-1 text-xs {isDragging
         ? 'border-primary bg-primary/10 text-primary'
