@@ -234,7 +234,7 @@
   async function doPurge() {
     if (!modsDir) return;
     if (!confirm("Purge deployed mods?")) return;
-    const r = await api.deployMods(modsDir, [], config?.deploy_mode || "auto");
+    await api.deployMods(modsDir, [], config?.deploy_mode || "auto");
     status = `Purged`;
     await refreshMods();
   }
@@ -497,7 +497,7 @@
                 selectedIds.has(draggedId) &&
                 selectedIds.has(mod.id))}
             <div
-              role="listitem"
+              role="button"
               tabindex="0"
               draggable="true"
               ondragstart={(e) => {

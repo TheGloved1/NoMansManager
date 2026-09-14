@@ -332,10 +332,9 @@ fn find_nms_install_inner(manual: Option<String>) -> Option<PathBuf> {
                     .map(|x| x.to_path_buf())
                     .unwrap_or_else(|| p.clone()),
             ] {
-                if cand.join("GAMEDATA/PCBANKS/NMSARC.globals.pak").exists() {
-                    return Some(cand);
-                }
-                if cand.file_name().map(|n| n == "No Man's Sky").unwrap_or(false) && cand.exists() && cand.join("GAMEDATA").exists() {
+                if cand.join("GAMEDATA/PCBANKS/NMSARC.globals.pak").exists() ||
+                    (cand.file_name().map(|n| n == "No Man's Sky").unwrap_or(false) && cand.exists() && cand.join("GAMEDATA").exists())
+                {
                     return Some(cand);
                 }
             }
@@ -400,22 +399,19 @@ fn find_nms_install_inner(manual: Option<String>) -> Option<PathBuf> {
             }
         }
     }
-    return fallbacks.into_iter().find(|f| f.exists() && f.join("GAMEDATA/PCBANKS/NMSARC.globals.pak").exists());
     #[cfg(windows)]
     {
-        for drive in ["C:", "D:", "E:", "F:"] {
-            for cand in [
+        if let Some(cand) = ["C:", "D:", "E:", "F:"].iter().find_map(|drive| {
+            [
                 PathBuf::from(format!("{}/Program Files (x86)/Steam/steamapps/common/No Man's Sky", drive)),
                 PathBuf::from(format!("{}/Steam/steamapps/common/No Man's Sky", drive)),
                 PathBuf::from(format!("{}/SteamLibrary/steamapps/common/No Man's Sky", drive)),
-            ] {
-                if cand.exists() {
-                    return Some(cand);
-                }
-            }
+            ].into_iter().find(|p| p.exists())
+        }) {
+            return Some(cand);
         }
     }
-    None
+    fallbacks.into_iter().find(|f| f.exists() && f.join("GAMEDATA/PCBANKS/NMSARC.globals.pak").exists())
 }
 fn shellexpand(s: &str) -> String {
     if s.starts_with("~/") {
