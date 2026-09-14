@@ -87,7 +87,7 @@
     </div>
   </aside>
 
-  <div class="flex flex-1 flex-col min-w-0 overflow-hidden bg-background">
+  <div class="flex flex-1 flex-col min-w-0 overflow-auto bg-background">
     {@render children()}
   </div>
 </div>

@@ -110,7 +110,7 @@ import { Separator } from '$lib/components/ui/separator';
   }
 </script>
 
-<div class="min-h-screen bg-background text-foreground">
+<div class="flex-1 bg-background text-foreground">
   <header class="sticky top-0 z-10 flex h-14 items-center justify-between border-b bg-card px-5">
     <div class="flex items-center gap-3">
       <Button variant="ghost" size="sm" onclick={() => goto('/')}>← Back</Button>
