@@ -222,16 +222,6 @@ import { Separator } from '$lib/components/ui/separator';
       </CardContent>
     </Card>
 
-    <Card class="border-dashed">
-      <CardHeader>
-        <CardTitle class="text-sm">More coming soon</CardTitle>
-        <CardDescription>You'll be able to tweak more here later — you decide.</CardDescription>
-      </CardHeader>
-      <CardContent class="text-xs text-muted-foreground">
-        Ideas: accent color, density, deploy mode, default profile, etc.
-      </CardContent>
-    </Card>
-
     <Card class="border-destructive/50 bg-destructive/5">
       <CardHeader>
         <CardTitle class="text-sm text-destructive">Danger Zone</CardTitle>
