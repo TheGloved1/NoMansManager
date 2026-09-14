@@ -38,7 +38,7 @@
 
 ## Cross-platform
 
-Available for **Windows** (MSI + NSIS), **Linux** (deb + AppImage + rpm), and **macOS** (DMG + app bundle).
+Available for **Windows**, **Linux**, and **macOS**.
 
 ---
 
