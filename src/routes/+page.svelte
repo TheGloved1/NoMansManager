@@ -370,7 +370,6 @@
     >
     <div class="h-6 w-px bg-border mx-1"></div>
     <Button variant="default" size="sm" onclick={doDeploy}>Deploy</Button>
-    <Button variant="outline" size="sm" onclick={doPurge}>Purge</Button>
     <div class="ml-auto flex items-center gap-2">
       <span class="hidden sm:inline text-xs text-muted-foreground"
         >{enabledCount}/{mods.length} enabled</span

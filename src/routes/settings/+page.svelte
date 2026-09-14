@@ -5,11 +5,12 @@
   import { api } from '$lib/api';
   import { loadConfigNative, saveConfigNative } from '$lib/config';
   import type { AppConfig } from '$lib/types';
-  import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '$lib/components/ui/card';
-  import { Button } from '$lib/components/ui/button';
-  import { Label } from '$lib/components/ui/label';
-  import * as Select from '$lib/components/ui/select';
-  import { Separator } from '$lib/components/ui/separator';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '$lib/components/ui/card';
+import { Button } from '$lib/components/ui/button';
+import { Label } from '$lib/components/ui/label';
+import * as Select from '$lib/components/ui/select';
+import * as Dialog from '$lib/components/ui/dialog';
+import { Separator } from '$lib/components/ui/separator';
 
   const themes = [
     { id: 'default', label: 'Default (NMS Dark)', desc: 'Space blue — default' },
@@ -35,6 +36,8 @@
   let saving = $state(false);
   let status = $state("");
   let detected = $state<string | null>(null);
+  let purgeConfirmOpen = $state(false);
+  let purgeStatus = $state("");
 
   function apply(cfg: AppConfig) {
     document.documentElement.setAttribute('data-theme', cfg.theme);
@@ -89,6 +92,21 @@
     try { detected = await api.findNmsInstall(null); } catch { detected = null; }
     status = "Back to auto-detect";
     setTimeout(() => status = "", 2000);
+  }
+
+  async function handlePurge() {
+    if (!config) return;
+    let gameRoot = config.game_path || await api.findNmsInstall(null);
+    if (!gameRoot) {
+      purgeStatus = "Game not found";
+      setTimeout(() => purgeStatus = "", 3000);
+      return;
+    }
+    const modsDir = await api.getModsDir(gameRoot);
+    await api.deployMods(modsDir, [], config.deploy_mode || "auto");
+    purgeStatus = "Purged deployed mods";
+    setTimeout(() => purgeStatus = "", 3000);
+    purgeConfirmOpen = false;
   }
 </script>
 
@@ -211,6 +229,37 @@
       </CardHeader>
       <CardContent class="text-xs text-muted-foreground">
         Ideas: accent color, density, deploy mode, default profile, etc.
+      </CardContent>
+    </Card>
+
+    <Card class="border-destructive/50 bg-destructive/5">
+      <CardHeader>
+        <CardTitle class="text-sm text-destructive">Danger Zone</CardTitle>
+        <CardDescription>Purge deployed mods — removes all mods from the game folder.</CardDescription>
+      </CardHeader>
+      <CardContent class="space-y-3">
+        <p class="text-xs text-muted-foreground">
+          This will clear all deployed mods from <span class="font-mono">MODS</span> and restore the game to vanilla. This action cannot be undone.
+        </p>
+        {#if purgeStatus}
+          <div class="text-xs text-muted-foreground">{purgeStatus}</div>
+        {/if}
+        <Button variant="destructive" size="sm" onclick={() => (purgeConfirmOpen = true)}>Purge deployed mods</Button>
+
+        <Dialog.Root bind:open={purgeConfirmOpen}>
+          <Dialog.Content class="sm:max-w-md">
+            <Dialog.Header>
+              <Dialog.Title>Purge deployed mods?</Dialog.Title>
+              <Dialog.Description>
+                This will remove all mods from your No Man's Sky install and restore vanilla files. This action cannot be undone.
+              </Dialog.Description>
+            </Dialog.Header>
+            <Dialog.Footer>
+              <Button variant="ghost" onclick={() => (purgeConfirmOpen = false)}>Cancel</Button>
+              <Button variant="destructive" onclick={handlePurge}>Purge</Button>
+            </Dialog.Footer>
+          </Dialog.Content>
+        </Dialog.Root>
       </CardContent>
     </Card>
 
