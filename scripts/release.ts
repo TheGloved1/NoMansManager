@@ -150,7 +150,7 @@ function generateChangelog(next: string, baseTag?: string): { changelogEntry: st
 
   const range = rangeStart ? `${rangeStart}..HEAD` : 'HEAD';
 
-  const log = execSync(`git log ${range} --pretty=format:"%B" --reverse`, { encoding: 'utf-8' });
+  const log = execSync(`git log ${range} --pretty=format:"%s%n" --reverse`, { encoding: 'utf-8' });
   const lines = log.split('\n').filter(Boolean);
 
   const added: string[] = [];
@@ -162,24 +162,28 @@ function generateChangelog(next: string, baseTag?: string): { changelogEntry: st
 
   for (const line of lines) {
     const m = line.match(pattern);
-    if (!m) continue;
-    const [, type, scope, msg] = m;
-    const entry = scope ? `**${scope.slice(1, -1)}**: ${msg}` : msg;
-    switch (type) {
-      case 'feat':
-        added.push(entry);
-        break;
-      case 'fix':
-        fixed.push(entry);
-        break;
-      case 'refactor':
-      case 'perf':
-      case 'style':
-        changed.push(entry);
-        break;
-      default:
-        other.push(entry);
-        break;
+    if (m) {
+      const [, type, scope, msg] = m;
+      const entry = scope ? `**${scope.slice(1, -1)}**: ${msg}` : msg;
+      switch (type) {
+        case 'feat':
+          added.push(entry);
+          break;
+        case 'fix':
+          fixed.push(entry);
+          break;
+        case 'refactor':
+        case 'perf':
+        case 'style':
+          changed.push(entry);
+          break;
+        default:
+          other.push(entry);
+          break;
+      }
+    } else {
+      // Non-conventional commit: treat as Other
+      other.push(line);
     }
   }
 
