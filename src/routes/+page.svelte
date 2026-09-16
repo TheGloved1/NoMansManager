@@ -8,6 +8,9 @@
   import { Input } from "$lib/components/ui/input";
   import * as Select from "$lib/components/ui/select";
   import * as Dialog from "$lib/components/ui/dialog";
+  import DataList from "$lib/components/data-list.svelte";
+  import SortHeader from "$lib/components/sort-header.svelte";
+  import { loadTableSort, saveTableSort, type SortDir } from "$lib/table-sort";
 
   let gameRoot: string | null = $state(null);
   let modsDir = $state("");
@@ -25,11 +28,30 @@
   let isDragging = $state(false);
   let filter = $state("");
   let statusFilter: string = $state("All");
+  type ModSortKey = "manual" | "status" | "name" | "size";
+  const MOD_SORT_KEY = "mods_sort";
+  let sortKey: ModSortKey = $state("manual");
+  let sortDir: SortDir = $state("asc");
+
+  function defaultDirFor(key: ModSortKey): SortDir {
+    return key === "name" ? "asc" : "desc";
+  }
+  function setModSort(key: Exclude<ModSortKey, "manual">) {
+    if (sortKey !== key) {
+      sortKey = key;
+      sortDir = defaultDirFor(key);
+    } else if (sortDir === defaultDirFor(key)) {
+      sortDir = sortDir === "asc" ? "desc" : "asc";
+    } else {
+      // third click: back to manual deploy order
+      sortKey = "manual";
+      sortDir = "asc";
+    }
+    saveTableSort(MOD_SORT_KEY, { key: sortKey, dir: sortDir });
+  }
+  let isSorted = $derived(sortKey !== "manual");
   let lastAddKey = "";
   let lastAddAt = 0;
-  let draggedId: string | null = $state(null);
-  let dragOverId: string | null = $state(null);
-  let dragOverPos: "before" | "after" | null = $state(null);
   let showRemoveConfirm = $state(false);
   let removeConfirmCount = $state(0);
 
@@ -122,6 +144,13 @@
       if (isDouble && selectedIds.has(id)) return;
       selectedIds = new Set([id]);
       lastSelected = id;
+    }
+  }
+  function toggleMod(mod: Mod) {
+    const cur = profile?.enabled[mod.id] ?? true;
+    if (profile) {
+      profile.enabled[mod.id] = !cur;
+      api.saveProfile(profile).then(() => refreshMods());
     }
   }
   function handleClear() {
@@ -259,8 +288,8 @@
     showRemoveConfirm = true;
   }
 
-  let filtered = $derived(
-    mods.filter((m) => {
+  let filtered = $derived.by(() => {
+    const list = mods.filter((m) => {
       const q = filter.toLowerCase();
       const matchesName = !q || m.display_name.toLowerCase().includes(q);
       const enabled = profile?.enabled[m.id] ?? true;
@@ -269,12 +298,37 @@
         (statusFilter === "Enabled" && enabled) ||
         (statusFilter === "Disabled" && !enabled);
       return matchesName && matchesStatus;
-    }),
-  );
+    });
+    // Display-only: deploy (profile) order is never touched by sorting.
+    if (sortKey === "status") {
+      const mul = sortDir === "desc" ? 1 : -1;
+      list.sort(
+        (a, b) =>
+          mul * ((profile?.enabled[b.id] ?? true ? 1 : 0) - (profile?.enabled[a.id] ?? true ? 1 : 0)),
+      );
+    } else if (sortKey === "name") {
+      const mul = sortDir === "desc" ? -1 : 1;
+      list.sort((a, b) => mul * a.display_name.localeCompare(b.display_name));
+    } else if (sortKey === "size") {
+      list.sort((a, b) =>
+        sortDir === "desc" ? b.size_bytes - a.size_bytes : a.size_bytes - b.size_bytes,
+      );
+    }
+    return list;
+  });
 
   onMount(() => {
     let cleanup: (() => void) | undefined;
     (async () => {
+      try {
+        const s = await loadTableSort(
+          MOD_SORT_KEY,
+          ["manual", "status", "name", "size"] as const,
+          { key: "manual", dir: "asc" },
+        );
+        sortKey = s.key;
+        sortDir = s.dir;
+      } catch {}
       await refreshGamePath();
       await refreshProfiles();
       if (!gameRoot) showStartupDialog = true;
@@ -383,149 +437,78 @@
     </div>
   </div>
 
-  <div
-    class="flex-1 overflow-auto"
-    role="button"
-    tabindex="0"
-    onclick={(e) => {
-      if (e.target === e.currentTarget) handleClear();
-    }}
-    onkeydown={(e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        handleClear();
-      }
-    }}
+  <DataList
+    columns={[
+      { id: "status", label: "Status", sortable: true },
+      { id: "name", label: "Mod Name", sortable: true },
+      { id: "size", label: "Size", sortable: true, align: "right" },
+      { id: "actions", label: "Actions", align: "right" },
+    ]}
+    gridTemplate="grid-cols-[auto_minmax(0,1fr)_auto_auto]"
+    items={filtered}
+    keyOf={(m) => m.id}
+    isSelected={(m) => selectedIds.has(m.id)}
+    sortKey={sortKey === "manual" ? null : sortKey}
+    sortDir={sortDir}
+    onSort={(id) => setModSort(id as "status" | "name" | "size")}
+    onSelect={(m, e) => handleSelect(m.id, e as unknown as MouseEvent)}
+    onActivate={(m) => toggleMod(m)}
+    onBackgroundClear={handleClear}
+    isDraggable={() => !isSorted}
+    onReorder={(from, to, pos) => handleReorder(String(from), String(to), pos)}
   >
-    <div class="min-w-160">
-      <div
-        class="sticky top-0 z-10 grid grid-cols-[140px_1fr_90px_120px] gap-2 px-3 py-2 bg-muted border-b text-[11px] font-medium tracking-wide text-muted-foreground"
-      >
-        <div>Status</div>
-        <div>Mod Name</div>
-        <div>Size</div>
-        <div class="text-right">Actions</div>
+    {#snippet row(mod, isSel)}
+      {@const enabled = profile?.enabled[mod.id] ?? true}
+      <div>
+        <span
+          class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium {enabled
+            ? 'bg-primary text-primary-foreground border-primary'
+            : 'bg-muted text-muted-foreground'}"
+        >
+          {enabled ? "Enabled" : "Disabled"}
+        </span>
       </div>
-      {#if filtered.length === 0}
-        <div class="p-12 text-center">
-          <div class="mx-auto max-w-sm space-y-2">
-            <div class="text-sm font-medium">
-              {mods.length === 0 ? "No mods yet" : "No matches"}
-            </div>
-            <div class="text-xs text-muted-foreground">
-              {mods.length === 0
-                ? "Add .pak or .zip, or import from MODS."
-                : `No results for "${filter}"`}
-            </div>
-            {#if mods.length === 0}<Button
-                variant="default"
-                size="sm"
-                class="mt-2"
-                onclick={addModsFile}>Add mods</Button
-              >{/if}
+      <div class="min-w-0">
+        <div class="truncate font-medium {enabled ? '' : 'opacity-60'}" title={mod.display_name}>
+          {mod.display_name}
+        </div>
+      </div>
+      <div class="text-right font-mono text-xs text-muted-foreground">
+        {sizeStr(mod.size_bytes)}
+      </div>
+      <div class="flex justify-end">
+        <Button
+          variant="outline"
+          size="xs"
+          onclick={(e) => {
+            e.stopPropagation();
+            handleSelect(mod.id, new MouseEvent("click"));
+            openRemoveConfirm();
+          }}>Remove</Button
+        >
+      </div>
+    {/snippet}
+    {#snippet empty()}
+      <div class="p-12 text-center">
+        <div class="mx-auto max-w-sm space-y-2">
+          <div class="text-sm font-medium">
+            {mods.length === 0 ? "No mods yet" : "No matches"}
           </div>
+          <div class="text-xs text-muted-foreground">
+            {mods.length === 0
+              ? "Add .pak or .zip, or import from MODS."
+              : `No results for "${filter}"`}
+          </div>
+          {#if mods.length === 0}<Button
+              variant="default"
+              size="sm"
+              class="mt-2"
+              onclick={addModsFile}>Add mods</Button
+            >{/if}
         </div>
-      {:else}
-        <div class="divide-y">
-          {#each filtered as mod}
-            {@const enabled = profile?.enabled[mod.id] ?? true}
-            {@const isSel = selectedIds.has(mod.id)}
-            {@const isOver = dragOverId === mod.id}
-            {@const isDrag =
-              draggedId === mod.id ||
-              (draggedId &&
-                selectedIds.has(draggedId) &&
-                selectedIds.has(mod.id))}
-            <div
-              role="button"
-              tabindex="0"
-              draggable="true"
-              ondragstart={(e) => {
-                draggedId = mod.id;
-                if (e.dataTransfer) {
-                  e.dataTransfer.effectAllowed = "move";
-                  e.dataTransfer.setData("text/plain", mod.id);
-                }
-              }}
-              ondragover={(e) => {
-                e.preventDefault();
-                if (!draggedId || draggedId === mod.id) return;
-                const r = (
-                  e.currentTarget as HTMLElement
-                ).getBoundingClientRect();
-                const m = r.top + r.height / 2;
-                dragOverId = mod.id;
-                dragOverPos = e.clientY < m ? "before" : "after";
-              }}
-              ondrop={(e) => {
-                e.preventDefault();
-                if (draggedId && draggedId !== mod.id)
-                  handleReorder(draggedId, mod.id, dragOverPos ?? "before");
-                draggedId = null;
-                dragOverId = null;
-              }}
-              ondragend={() => {
-                draggedId = null;
-                dragOverId = null;
-              }}
-              onclick={(e) => handleSelect(mod.id, e as MouseEvent)}
-              onkeydown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  handleSelect(mod.id, e as unknown as MouseEvent);
-                }
-              }}
-              ondblclick={() => {
-                const cur = profile?.enabled[mod.id] ?? true;
-                if (profile) {
-                  profile.enabled[mod.id] = !cur;
-                  api.saveProfile(profile).then(() => refreshMods());
-                }
-              }}
-              class="relative grid grid-cols-[140px_1fr_90px_120px] gap-2 items-center px-3 py-2 text-sm cursor-pointer hover:bg-muted/50 {isSel
-                ? 'bg-primary/10'
-                : ''} {enabled ? '' : 'opacity-60'} {isDrag
-                ? 'opacity-40'
-                : ''}"
-            >
-              {#if isOver && dragOverPos === "before"}<div
-                  class="absolute inset-x-0 top-0 h-0.5 bg-primary"
-                ></div>{/if}
-              {#if isOver && dragOverPos === "after"}<div
-                  class="absolute inset-x-0 bottom-0 h-0.5 bg-primary"
-                ></div>{/if}
-              <div class="flex items-center gap-2">
-                <span
-                  class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium {enabled
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'bg-muted text-muted-foreground'}"
-                >
-                  {enabled ? "Enabled" : "Disabled"}
-                </span>
-              </div>
-              <div class="truncate font-medium" title={mod.display_name}>
-                {mod.display_name}
-              </div>
-              <div class="text-xs text-muted-foreground">
-                {sizeStr(mod.size_bytes)}
-              </div>
-              <div class="flex justify-end">
-                <Button
-                  variant="outline"
-                  size="xs"
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    handleSelect(mod.id, new MouseEvent("click"));
-                    openRemoveConfirm();
-                  }}>Remove</Button
-                >
-              </div>
-            </div>
-          {/each}
-        </div>
-      {/if}
-    </div>
-  </div>
+      </div>
+    {/snippet}
+  </DataList>
 
   {#if selectedIds.size > 0}
     <div
