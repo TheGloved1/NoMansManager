@@ -34,11 +34,30 @@
   const isActive = (href: string) => href === '/' ? path === '/' : path.startsWith(href);
 
   let collapsed = $state(false);
+  // Wide screens default to expanded, narrow screens to minimized.
+  // A manual toggle is remembered and wins over the breakpoint.
+  const wideQuery = "(min-width: 1024px)";
+  function hasManualChoice() {
+    try {
+      return localStorage.getItem("sidebar-collapsed") !== null;
+    } catch {
+      return true;
+    }
+  }
+  function applyAutoSidebar(e?: { matches: boolean }) {
+    if (hasManualChoice()) return;
+    const wide = e ? e.matches : window.matchMedia(wideQuery).matches;
+    collapsed = !wide;
+  }
   onMount(() => {
     try {
       const saved = localStorage.getItem("sidebar-collapsed");
       if (saved !== null) collapsed = saved === "true";
+      else applyAutoSidebar();
     } catch {}
+    const mq = window.matchMedia(wideQuery);
+    mq.addEventListener("change", applyAutoSidebar);
+    return () => mq.removeEventListener("change", applyAutoSidebar);
   });
   function toggleCollapsed() {
     collapsed = !collapsed;
@@ -56,8 +75,8 @@
       <div class="h-7 w-7 rounded-md bg-primary flex items-center justify-center text-primary-foreground font-black text-[11px] shrink-0">NMM</div>
       {#if !collapsed}
         <div class="leading-tight min-w-0">
-          <div class="text-sm font-semibold tracking-tight truncate">NoMansManager <span class="text-[11px] font-normal text-muted-foreground">v{appVersion}</span></div>
-          <div class="text-[11px] text-muted-foreground">Mods & Bases</div>
+          <div class="text-sm font-semibold tracking-tight truncate">NoMansManager</div>
+          <div class="text-[11px] text-muted-foreground">v{appVersion}</div>
         </div>
       {/if}
     </div>
