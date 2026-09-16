@@ -73,8 +73,57 @@
   let exportOpen = $state(false);
   let exportFormat: "json" | "nmsbase" = $state("json");
   let importing = $state(false);
-  let importText = $state("");
   let importingBusy = $state(false);
+  let importMode: "paste" | "file" = $state("paste");
+  let importText = $state("");
+  // Held outside reactivity on purpose: full base files can be tens of MB
+  // and must never be rendered (that blew the dialog layout apart).
+  // `hasImportFile` mirrors its presence for the template (reactively).
+  let importFileText = "";
+  let hasImportFile = $state(false);
+  let importFileName: string | null = $state(null);
+  let importFileInfo: { objects: number; kind: string } | { error: string } | null =
+    $state(null);
+
+  function resetImportDialog() {
+    importing = false;
+    importText = "";
+    importFileText = "";
+    hasImportFile = false;
+    importFileName = null;
+    importFileInfo = null;
+    importMode = "paste";
+  }
+
+  function summarizeImport(raw: string): { objects: number; kind: string } | { error: string } {
+    let t = raw.trim();
+    while (t.startsWith(",")) t = t.slice(1).trimStart();
+    const tryParse = (s: string): unknown | undefined => {
+      try {
+        return JSON.parse(s);
+      } catch {
+        return undefined;
+      }
+    };
+    let v = tryParse(t);
+    if (v === undefined && t.startsWith("{")) v = tryParse(`[${t}]`);
+    if (v === undefined) return { error: "Couldn't parse it — Inject will validate" };
+    if (Array.isArray(v)) {
+      if (!v.length) return { error: "Empty list" };
+      const first = v[0] as Record<string, unknown>;
+      if (first && typeof first === "object" && "ObjectID" in first)
+        return { objects: v.length, kind: "Objects array" };
+      if (first && typeof first === "object" && "Objects" in first)
+        return { objects: (first.Objects as unknown[]).length, kind: "Full base" };
+      return { objects: v.length, kind: "JSON list" };
+    }
+    if (v && typeof v === "object") {
+      const o = v as Record<string, unknown>;
+      if ("Objects" in o) return { objects: (o.Objects as unknown[]).length, kind: "Full base" };
+      if ("ObjectID" in o) return { objects: 1, kind: "Single object" };
+    }
+    return { error: "Unrecognized format" };
+  }
   let restoring = $state(false);
   let backups: BackupInfo[] = $state([]);
   let selectedBackup: string | null = $state(null);
@@ -361,6 +410,16 @@
     }
   }
 
+  function openImportDialog() {
+    const b = selectedBaseObj();
+    if (!b) {
+      toastErr("Select target base to replace first");
+      return;
+    }
+    resetImportDialog();
+    importing = true;
+  }
+
   async function doPickImportFile() {
     const picked = await open({
       title: "Import — pick JSON / NMSBASE / Objects",
@@ -371,9 +430,16 @@
     });
     if (typeof picked === "string" && picked) {
       try {
-        importText = await api.readSaveTextFile(picked);
+        importFileText = await api.readSaveTextFile(picked);
+        hasImportFile = true;
+        importFileName = picked.split("/").slice(-1)[0] ?? picked;
+        importFileInfo = summarizeImport(importFileText);
+        importText = "";
       } catch (e) {
-        toastErr(`Read file failed: ${e}`);
+        importFileText = "";
+        hasImportFile = false;
+        importFileName = null;
+        importFileInfo = { error: `Read file failed: ${e}` };
       }
     }
   }
@@ -381,12 +447,14 @@
   async function doImport() {
     const b = selectedBaseObj();
     if (!b) return toastErr("Select target base to replace first");
-    if (!importText.trim()) return toastErr("Paste JSON or pick a file first");
+    const payload = importMode === "file" ? importFileText : importText;
+    if (!payload.trim()) {
+      return toastErr(importMode === "file" ? "Pick a file first" : "Paste JSON first");
+    }
     importingBusy = true;
     try {
-      const res = await api.importBase(b.idx, importText);
-      importing = false;
-      importText = "";
+      const res = await api.importBase(b.idx, payload);
+      resetImportDialog();
       bases = await api.listBases(null);
       const c = { ship: 0, planet: 0, freighter: 0, space: 0, total_objs: 0 };
       for (const x of bases) {
@@ -463,7 +531,7 @@
     if (viewing || importing || restoring || recompressMode || settingsOpen || exportOpen) return;
     if (e.key === "e" || e.key === "E") openExportDialog();
     else if (e.key === "v") doView();
-    else if (e.key === "i") importing = true;
+    else if (e.key === "i") openImportDialog();
     else if (e.key === "r") recompressMode = "output";
     else if (e.key === "c") filter = "Corvettes";
     else if (e.key === "p") filter = "Planetary";
@@ -737,7 +805,7 @@
         <Button size="sm" variant="outline" onclick={doView} disabled={selectedBase === null} title="Shortcut [v]">
           <Eye class="size-3.5" />View
         </Button>
-        <Button size="sm" variant="outline" onclick={() => (importing = true)} disabled={selectedBase === null} title="Shortcut [i]">
+        <Button size="sm" variant="outline" onclick={openImportDialog} disabled={selectedBase === null} title="Shortcut [i]">
           <Download class="size-3.5" />Import…
         </Button>
         <div class="ml-auto flex gap-2">
@@ -859,29 +927,76 @@
   </Dialog.Root>
 
   <!-- import dialog -->
-  <Dialog.Root bind:open={importing}>
-    <Dialog.Content class="max-h-[85vh] max-w-2xl overflow-hidden">
+  <Dialog.Root
+    bind:open={importing}
+    onOpenChange={(o: boolean) => {
+      if (!o) resetImportDialog();
+    }}
+  >
+    <Dialog.Content class="max-w-md overflow-hidden">
       <Dialog.Header>
         <Dialog.Title>Import into '{selectedBaseObj()?.display_name ?? ""}' (slot {selectedBase})</Dialog.Title>
         <Dialog.Description>
-          Replaces the base's objects. The original is backed up automatically. Full base JSON,
-          objects-only arrays, and .nmsbase leading-comma text are all accepted.
+          Replaces the base's objects. The original is backed up automatically.
         </Dialog.Description>
       </Dialog.Header>
-      <Textarea
-        bind:value={importText}
-        rows={14}
-        class="font-mono text-xs"
-        placeholder="Paste base JSON here, or pick a file…"
-      />
-      <Dialog.Footer class="sm:justify-between">
-        <Button variant="ghost" onclick={doPickImportFile}>Pick file…</Button>
-        <div class="flex gap-2">
-          <Button variant="outline" onclick={() => (importing = false)}>Cancel</Button>
-          <Button onclick={doImport} disabled={!importText.trim() || importingBusy}>
-            {#if importingBusy}<LoaderCircle class="size-3.5 animate-spin" />Injecting…{:else}Inject{/if}
-          </Button>
+      <div class="grid grid-cols-2 gap-1 rounded-lg border border-border bg-background p-1">
+        <button
+          class="rounded-md px-1 py-1 text-xs font-medium transition {importMode === 'paste'
+            ? 'bg-primary text-primary-foreground'
+            : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+          onclick={() => (importMode = "paste")}
+        >
+          Paste JSON
+        </button>
+        <button
+          class="rounded-md px-1 py-1 text-xs font-medium transition {importMode === 'file'
+            ? 'bg-primary text-primary-foreground'
+            : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+          onclick={() => (importMode = "file")}
+        >
+          From file
+        </button>
+      </div>
+      {#if importMode === "paste"}
+        <Textarea
+          bind:value={importText}
+          rows={6}
+          class="max-h-56 font-mono text-xs"
+          placeholder="Paste base JSON, objects array, or .nmsbase text…"
+        />
+      {:else}
+        <div class="flex flex-col gap-2">
+          <Button variant="outline" onclick={doPickImportFile}>
+            <FolderOpen class="size-3.5" />{importFileName ? "Pick a different file…" : "Pick file…"}</Button
+          >
+          {#if importFileName}
+            <div class="rounded-md border border-border bg-background px-2.5 py-2">
+              <div class="truncate font-mono text-xs" title={importFileName}>{importFileName}</div>
+              {#if importFileInfo && "objects" in importFileInfo}
+                <div class="mt-1 flex gap-1.5">
+                  <Badge variant="default">{importFileInfo.objects.toLocaleString()} objects</Badge>
+                  <Badge variant="outline">{importFileInfo.kind}</Badge>
+                </div>
+              {:else if importFileInfo && "error" in importFileInfo}
+                <div class="mt-1 text-xs text-amber-400">{importFileInfo.error}</div>
+              {/if}
+            </div>
+          {:else}
+            <p class="text-xs text-muted-foreground">
+              Full base JSON, objects-only arrays, and .nmsbase files are all accepted.
+            </p>
+          {/if}
         </div>
+      {/if}
+      <Dialog.Footer>
+        <Button variant="outline" onclick={resetImportDialog}>Cancel</Button>
+        <Button
+          onclick={doImport}
+          disabled={importingBusy || (importMode === "file" ? !hasImportFile : !importText.trim())}
+        >
+          {#if importingBusy}<LoaderCircle class="size-3.5 animate-spin" />Injecting…{:else}Inject{/if}
+        </Button>
       </Dialog.Footer>
     </Dialog.Content>
   </Dialog.Root>
