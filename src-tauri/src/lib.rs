@@ -55,7 +55,8 @@ fn ensure_dirs() {
 /// - settings.json (legacy file + Tauri plugin store): copy only when the new
 ///   side has no file yet, so we never clobber settings the user already made
 ///   in the renamed app.
-/// Old dirs are left in place as a backup; nothing is ever deleted.
+/// Once every byte of an old location is confirmed present on the new side,
+/// the old location is removed. Anything unverified is kept, with a log line.
 fn migrate_legacy_data_dir() {
     let data_base = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
     let cfg_base = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
@@ -100,6 +101,104 @@ fn migrate_legacy_data_dir() {
             }
         }
     }
+
+    // verified cleanup: remove old locations only once every byte is confirmed
+    // present on the new side. Anything unverified stays put, with a log line.
+    let old_data = data_base.join(LEGACY_DATA_DIR_NAME);
+    if old_data.is_dir() {
+        if trees_identical(&old_data, &app_data_dir()) {
+            match fs::remove_dir_all(&old_data) {
+                Ok(_) => eprintln!("migration: removed {}", old_data.display()),
+                Err(e) => eprintln!("migration: could not remove {}: {}", old_data.display(), e),
+            }
+        } else {
+            eprintln!(
+                "migration: keeping {} (not fully mirrored yet)",
+                old_data.display()
+            );
+        }
+    }
+    let old_cfg_file = cfg_base.join(LEGACY_DATA_DIR_NAME).join("settings.json");
+    if old_cfg_file.is_file() {
+        let new_cfg_file = config_file();
+        let same = fs::read(&old_cfg_file)
+            .ok()
+            .zip(fs::read(&new_cfg_file).ok())
+            .map(|(a, b)| a == b)
+            .unwrap_or(false);
+        if same {
+            let _ = fs::remove_file(&old_cfg_file);
+            let old_cfg_dir = cfg_base.join(LEGACY_DATA_DIR_NAME);
+            // drop the dir too if nothing else lives in it
+            let empty = fs::read_dir(&old_cfg_dir)
+                .map(|mut e| e.next().is_none())
+                .unwrap_or(false);
+            if empty {
+                let _ = fs::remove_dir(&old_cfg_dir);
+            }
+            eprintln!("migration: removed {}", old_cfg_file.display());
+        }
+    }
+    let old_plugin_dir = data_base.join("dev.gloved.nomodssky");
+    let new_plugin_settings = data_base
+        .join("dev.gloved.nomansmanager")
+        .join("settings.json");
+    if old_plugin_dir.is_dir() {
+        let same = fs::read(old_plugin_dir.join("settings.json"))
+            .ok()
+            .zip(fs::read(&new_plugin_settings).ok())
+            .map(|(a, b)| a == b)
+            .unwrap_or(false);
+        if same {
+            // caches/state regenerate under the new identity; drop the whole dir
+            match fs::remove_dir_all(&old_plugin_dir) {
+                Ok(_) => eprintln!("migration: removed {}", old_plugin_dir.display()),
+                Err(e) => eprintln!(
+                    "migration: could not remove {}: {}",
+                    old_plugin_dir.display(),
+                    e
+                ),
+            }
+        } else {
+            eprintln!(
+                "migration: keeping {} (settings not mirrored yet)",
+                old_plugin_dir.display()
+            );
+        }
+    }
+}
+
+/// Byte-compare every file under `old` against its counterpart under `new`.
+/// Extra files on the new side are ignored. Symlinks/special files count as
+/// a mismatch — when in doubt, keep the originals.
+fn trees_identical(old: &Path, new: &Path) -> bool {
+    for entry in walkdir::WalkDir::new(old).into_iter().filter_map(|e| e.ok()) {
+        let rel = match entry.path().strip_prefix(old) {
+            Ok(r) => r,
+            Err(_) => return false,
+        };
+        if rel.as_os_str().is_empty() {
+            continue; // the root itself
+        }
+        let counterpart = new.join(rel);
+        if entry.file_type().is_dir() {
+            if !counterpart.is_dir() {
+                return false;
+            }
+        } else if entry.file_type().is_file() {
+            let same = fs::read(entry.path())
+                .ok()
+                .zip(fs::read(&counterpart).ok())
+                .map(|(a, b)| a == b)
+                .unwrap_or(false);
+            if !same {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+    true
 }
 
 /// Copy entries missing on the destination side. Returns true if anything
@@ -1258,48 +1357,64 @@ mod migration_tests {
         }
     }
 
+    const OLD_PROFILE: &str = r#"{"name":"default","mod_order":["ModA","ModB"],"enabled":{"ModA":true,"ModB":false}}"#;
+
     #[test]
-    fn migration_copies_merges_and_repairs() {
+    fn migration_copies_merges_repairs_and_cleans_up() {
         let base = std::env::temp_dir().join(format!("nmm_migtest_{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         let _guard = EnvGuard::set_fake(&base);
 
         let data = base.join(".local/share");
         let cfg = base.join(".config");
-        let old_data = data.join("nms-mod-manager");
-        // old world: 2 mods (one nested), full profile, both settings files
-        fs::create_dir_all(old_data.join("mods/ModA")).unwrap();
-        fs::write(old_data.join("mods/ModA/mod.pak"), b"pak-a").unwrap();
-        fs::create_dir_all(old_data.join("mods/ModB")).unwrap();
-        fs::write(old_data.join("mods/ModB/readme.txt"), b"hi").unwrap();
-        fs::create_dir_all(old_data.join("profiles")).unwrap();
-        let old_profile = r#"{"name":"default","mod_order":["ModA","ModB"],"enabled":{"ModA":true,"ModB":false}}"#;
-        fs::write(old_data.join("profiles/default.json"), old_profile).unwrap();
+        let old_plugin_settings = r#"{"theme":"rose-pine-moon"}"#;
+
+        // (re)seed the old world: 2 mods (one nested), full profile, settings
+        let seed_old_data = || {
+            let old_data = data.join("nms-mod-manager");
+            fs::create_dir_all(old_data.join("mods/ModA")).unwrap();
+            fs::write(old_data.join("mods/ModA/mod.pak"), b"pak-a").unwrap();
+            fs::create_dir_all(old_data.join("mods/ModB")).unwrap();
+            fs::write(old_data.join("mods/ModB/readme.txt"), b"hi").unwrap();
+            fs::create_dir_all(old_data.join("profiles")).unwrap();
+            fs::write(old_data.join("profiles/default.json"), OLD_PROFILE).unwrap();
+        };
+        let seed_old_plugin = || {
+            fs::create_dir_all(data.join("dev.gloved.nomodssky")).unwrap();
+            fs::write(
+                data.join("dev.gloved.nomodssky/settings.json"),
+                old_plugin_settings,
+            )
+            .unwrap();
+        };
+
+        // phase A: first run copies everything, then removes verified old dirs
+        seed_old_data();
+        seed_old_plugin();
         fs::create_dir_all(cfg.join("nms-mod-manager")).unwrap();
         fs::write(cfg.join("nms-mod-manager/settings.json"), b"{}").unwrap();
-        fs::create_dir_all(data.join("dev.gloved.nomodssky")).unwrap();
-        fs::write(
-            data.join("dev.gloved.nomodssky/settings.json"),
-            r#"{"theme":"rose-pine-moon"}"#,
-        )
-        .unwrap();
-
-        // first run: full copy
         migrate_legacy_data_dir();
         let new_data = data.join("nomansmanager");
         assert_eq!(fs::read(new_data.join("mods/ModA/mod.pak")).unwrap(), b"pak-a");
         assert_eq!(
             fs::read_to_string(new_data.join("profiles/default.json")).unwrap(),
-            old_profile
+            OLD_PROFILE
         );
         assert!(new_data.join("mods/ModB/readme.txt").is_file());
         assert!(cfg.join("nomansmanager/settings.json").is_file());
         assert_eq!(
             fs::read_to_string(data.join("dev.gloved.nomansmanager/settings.json")).unwrap(),
-            r#"{"theme":"rose-pine-moon"}"#
+            old_plugin_settings
+        );
+        assert!(!data.join("nms-mod-manager").exists(), "mirrored old data dir removed");
+        assert!(!cfg.join("nms-mod-manager").exists(), "mirrored old config dir removed");
+        assert!(
+            !data.join("dev.gloved.nomodssky").exists(),
+            "mirrored old plugin dir removed"
         );
 
-        // poisoned state: empty mods + regenerated-empty profile (the reported bug)
+        // phase B: poisoned state (the reported bug) self-heals from re-seeded old dirs
+        seed_old_data();
         let _ = fs::remove_dir_all(new_data.join("mods"));
         fs::create_dir_all(new_data.join("mods")).unwrap();
         fs::write(
@@ -1311,11 +1426,13 @@ mod migration_tests {
         assert_eq!(fs::read(new_data.join("mods/ModA/mod.pak")).unwrap(), b"pak-a");
         assert_eq!(
             fs::read_to_string(new_data.join("profiles/default.json")).unwrap(),
-            old_profile
+            OLD_PROFILE
         );
         assert!(new_data.join("profiles/default.json.bak").is_file());
+        assert!(!data.join("nms-mod-manager").exists(), "re-mirrored old data dir removed");
 
-        // never clobber user-customized new settings
+        // phase C: diverged new settings are never clobbered; old dir kept...
+        seed_old_plugin();
         fs::write(
             data.join("dev.gloved.nomansmanager/settings.json"),
             r#"{"theme":"custom"}"#,
@@ -1326,6 +1443,15 @@ mod migration_tests {
             fs::read_to_string(data.join("dev.gloved.nomansmanager/settings.json")).unwrap(),
             r#"{"theme":"custom"}"#
         );
+        assert!(data.join("dev.gloved.nomodssky").exists(), "diverged old dir kept");
+        // ...until they match, then cleanup proceeds
+        fs::write(
+            data.join("dev.gloved.nomansmanager/settings.json"),
+            old_plugin_settings,
+        )
+        .unwrap();
+        migrate_legacy_data_dir();
+        assert!(!data.join("dev.gloved.nomodssky").exists(), "matched old dir removed");
 
         let _ = fs::remove_dir_all(&base);
     }
