@@ -1,3 +1,12 @@
+## [26.9.5] - 2026-09-16
+
+### Added
+
+- shared DataList/SortHeader components with persisted table sort
+- mods list sorting, auto-sized columns, selection hover fix
+- restructure bases page around shared list
+- responsive sidebar, version subtitle in header
+
 ## [26.9.4] - 2026-09-16
 
 ### Added
