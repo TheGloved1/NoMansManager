@@ -1,3 +1,9 @@
+## [26.9.6] - 2026-09-16
+
+### Fixed
+
+- never auto-select in bases list
+
 ## [26.9.5] - 2026-09-16
 
 ### Added
