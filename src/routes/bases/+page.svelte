@@ -3,7 +3,9 @@
   import { open, save } from "@tauri-apps/plugin-dialog";
   import { api } from "$lib/api";
   import type { BackupInfo, BaseSummary, SaveFileInfo, TypeCounts } from "$lib/types";
-  import { clearSaveDirOverride, loadSaveDirOverride, saveSaveDirOverride } from "$lib/bases-settings";
+  import { clearSaveDirOverride, loadBasesSort, loadSaveDirOverride, saveBasesSort, saveSaveDirOverride } from "$lib/bases-settings";
+  import DataList from "$lib/components/data-list.svelte";
+  import type { BasesSortDir, BasesSortKey } from "$lib/bases-settings";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Badge } from "$lib/components/ui/badge";
@@ -11,7 +13,6 @@
   import * as Table from "$lib/components/ui/table";
   import { Textarea } from "$lib/components/ui/textarea";
   import { Separator } from "$lib/components/ui/separator";
-  import * as Empty from "$lib/components/ui/empty";
   import * as Select from "$lib/components/ui/select";
   import {
     CircleAlert,
@@ -46,7 +47,8 @@
   let counts: TypeCounts | null = $state(null);
   let selectedBase: number | null = $state(null);
   let search = $state("");
-  let sortMode = $state("name");
+  let sortKey: BasesSortKey = $state("name");
+  let sortDir: BasesSortDir = $state("asc");
 
   // --- status + toasts ---
   let status = $state("Ready. Autodetecting Proton dir…");
@@ -149,14 +151,32 @@
       list = list.filter((b) =>
         `${b.display_name} ${b.name} ${b.base_type}`.toLowerCase().includes(q),
       );
-    if (sortMode === "objects") list.sort((a, b) => b.objects - a.objects);
-    else if (sortMode === "type")
-      list.sort(
-        (a, b) => a.base_type.localeCompare(b.base_type) || a.display_name.localeCompare(b.display_name),
+    const dirMul = sortDir === "desc" ? -1 : 1;
+    const byName = (a: BaseSummary, b: BaseSummary) =>
+      dirMul * a.display_name.localeCompare(b.display_name);
+    if (sortKey === "objects")
+      list.sort((a, b) =>
+        sortDir === "desc" ? b.objects - a.objects : a.objects - b.objects,
       );
-    else list.sort((a, b) => a.display_name.localeCompare(b.display_name));
+    else if (sortKey === "type")
+      list.sort(
+        (a, b) =>
+          dirMul * a.base_type.localeCompare(b.base_type) ||
+          a.display_name.localeCompare(b.display_name),
+      );
+    else list.sort(byName);
     return list;
   });
+
+  function setSort(key: BasesSortKey) {
+    if (sortKey === key) {
+      sortDir = sortDir === "asc" ? "desc" : "asc";
+    } else {
+      sortKey = key;
+      sortDir = key === "objects" ? "desc" : "asc";
+    }
+    saveBasesSort({ key: sortKey, dir: sortDir });
+  }
   $effect(() => {
     if (shown.length && !shown.some((b) => b.idx === selectedBase)) selectedBase = shown[0].idx;
     if (!shown.length) selectedBase = null;
@@ -165,6 +185,8 @@
   function selectedBaseObj(): BaseSummary | null {
     return bases.find((b) => b.idx === selectedBase) ?? null;
   }
+
+  let sel = $derived(selectedBaseObj());
 
   function typeBadgeVariant(t: string): "default" | "secondary" | "outline" {
     if (t === "PlayerShipBase") return "default";
@@ -539,26 +561,30 @@
   }
 
   onMount(() => {
+    (async () => {
+      try {
+        const s = await loadBasesSort();
+        sortKey = s.key;
+        sortDir = s.dir;
+      } catch {}
+    })();
     detectDir();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
 </script>
 
-<div class="flex min-h-0 flex-1 flex-col bg-background text-foreground">
-  <!-- header -->
-  <header class="flex h-13 shrink-0 items-center gap-3 border-b border-border bg-card px-4 py-2">
-    <div class="text-sm font-semibold tracking-tight">Bases</div>
-    <div class="text-[11px] text-muted-foreground">Save base tools</div>
-    <Separator orientation="vertical" class="mx-1 h-6" />
+<div class="flex min-h-0 flex-1 flex-col overflow-hidden bg-background text-foreground">
+  <!-- top action bar -->
+  <div class="flex min-h-12 shrink-0 flex-wrap items-center gap-1.5 border-b border-border bg-card px-3 py-1.5">
     <button
       class="flex min-w-0 items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
       onclick={doChangeDir}
       title={saveDir ? `${saveDir}${saveDirManual ? " (manual — click to change)" : " (auto-detected — click to override)"}` : "No save dir — click to choose"}
     >
       <FolderOpen class="size-3.5 shrink-0" />
-      <span class="max-w-110 truncate font-mono">
-        {saveDir ? saveDir.split("/").slice(-2).join("/") : "No save dir"}
+      <span class="max-w-44 truncate font-mono">
+        {saveDir ? saveDir.split("/").slice(-1)[0] : "No save dir"}
       </span>
       {#if saveDirManual}
         <Badge variant="default" class="h-4 px-1 text-[10px]">manual</Badge>
@@ -574,264 +600,212 @@
         <X class="size-3.5" />
       </Button>
     {/if}
-    <div class="ml-auto flex items-center gap-2">
+    {#if saveFiles.length > 0}
+      <Select.Root
+        type="single"
+        value={selectedSave ?? ""}
+        onValueChange={(v: string) => v && (selectedSave = v)}
+      >
+        <Select.Trigger class="h-7 w-36 font-mono text-xs">
+          <Select.Value placeholder="Save…" />
+        </Select.Trigger>
+        <Select.Content>
+          {#each saveFiles as f}
+            <Select.Item value={f.name}>
+              {f.name} · {f.size_display}
+            </Select.Item>
+          {/each}
+        </Select.Content>
+      </Select.Root>
+      <Button size="sm" onclick={doLoad} disabled={loading || !selectedSave}>
+        {#if loading}<LoaderCircle class="size-3.5 animate-spin" />Loading…{:else}<Download class="size-3.5" />Load{/if}
+      </Button>
+    {/if}
+    <div class="mx-1 h-6 w-px bg-border"></div>
+    <Button size="sm" variant="outline" onclick={doBackup} title="Back up all save files">
+      <Save class="size-3.5" />Backup
+    </Button>
+    <Button size="sm" variant="outline" onclick={openRestore} title="Restore from backup…">
+      <HardDriveDownload class="size-3.5" />Restore…
+    </Button>
+    <div class="mx-1 h-6 w-px bg-border"></div>
+    <Button
+      size="sm"
+      variant="destructive"
+      onclick={() => (recompressMode = "overwrite")}
+      disabled={bases.length === 0}
+    >
+      Overwrite LIVE
+    </Button>
+    <Button
+      size="sm"
+      variant="outline"
+      onclick={() => (recompressMode = "output")}
+      disabled={bases.length === 0}
+      title="Shortcut [r]"
+    >
+      Recompress
+    </Button>
+    <div class="ml-auto flex items-center gap-1.5">
       {#if counts}
-        <div class="hidden items-center gap-1.5 md:flex">
-          <Badge variant="default">{counts.ship} ship</Badge>
-          <Badge variant="secondary" class="border-emerald-500/40 text-emerald-400">{counts.planet} planet</Badge>
-          <Badge variant="outline" class="border-amber-500/40 text-amber-400">{counts.freighter} fr</Badge>
-          <Badge variant="outline">{counts.total_objs.toLocaleString()} objs</Badge>
-        </div>
+        <span class="hidden text-xs text-muted-foreground xl:inline"
+          >{counts.ship} ship · {counts.planet} planet · {counts.total_objs.toLocaleString()} objs</span
+        >
       {/if}
       <Button variant="ghost" size="icon-sm" onclick={() => (settingsOpen = true)} title="Bases settings">
         <Settings class="size-4" />
       </Button>
     </div>
-  </header>
+  </div>
 
-  <div class="flex min-h-0 flex-1">
-    <!-- sidebar -->
-    <aside class="flex w-70 shrink-0 flex-col gap-3 overflow-y-auto border-r border-border bg-card p-3">
-      <section>
-        <div class="mb-1.5 flex items-center justify-between">
-          <h2 class="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Saves</h2>
-          <span class="text-[11px] text-muted-foreground">{saveFiles.length}</span>
-        </div>
-        {#if saveFiles.length === 0}
-          <div class="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
-            No save files found.<br />Check the save folder above.
-          </div>
-        {:else}
-          <div class="flex flex-col gap-1">
-            {#each saveFiles as f}
-              <button
-                class="rounded-lg border px-2.5 py-1.5 text-left transition {f.name === selectedSave
-                  ? 'border-primary bg-primary/10'
-                  : 'border-border bg-background hover:bg-muted'}"
-                onclick={() => (selectedSave = f.name)}
-                ondblclick={doLoad}
-              >
-                <div class="flex items-center justify-between gap-2">
-                  <span class="truncate text-[13px] font-medium">{f.name}</span>
-                  <span class="shrink-0 font-mono text-[11px] text-muted-foreground">{f.size_display}</span>
-                </div>
-                <div class="font-mono text-[11px] text-muted-foreground">{f.modified}</div>
-              </button>
-            {/each}
-          </div>
-        {/if}
-        <div class="mt-2 flex gap-2">
-          <Button class="flex-1" size="sm" onclick={doLoad} disabled={loading || !selectedSave}>
-            {#if loading}<LoaderCircle class="size-3.5 animate-spin" />Loading…{:else}<Download class="size-3.5" />Load{/if}
-          </Button>
-          <Button variant="outline" size="sm" onclick={doChangeDir} title="Change save directory">
-            <FolderOpen class="size-3.5" />
-          </Button>
-        </div>
-      </section>
-
-      <Separator />
-
-      <section>
-        <h2 class="mb-1.5 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Filter</h2>
-        <div class="grid grid-cols-3 gap-1 rounded-lg border border-border bg-background p-1">
-          {#each [["Corvettes", "c"], ["Planetary", "p"], ["Both", "b"]] as [label, key]}
-            <button
-              class="rounded-md px-1 py-1 text-xs font-medium transition {filter === label
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
-              onclick={() => (filter = label as typeof filter)}
-              title="Shortcut [{key}]"
-            >
-              {label}
-            </button>
-          {/each}
-        </div>
-        {#if counts}
-          <p class="mt-1.5 text-[11px] text-muted-foreground">
-            Showing {shown.length}/{bases.length} · Ship {counts.ship} · Planet {counts.planet} ·
-            Freighter {counts.freighter} · Space {counts.space}
-          </p>
-        {/if}
-      </section>
-
-      <Separator />
-
-      <section>
-        <h2 class="mb-1.5 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Save safety</h2>
-        <div class="flex gap-2">
-          <Button variant="outline" size="sm" class="flex-1" onclick={doBackup}>
-            <Save class="size-3.5" />Backup
-          </Button>
-          <Button variant="outline" size="sm" class="flex-1" onclick={openRestore}>
-            <HardDriveDownload class="size-3.5" />Restore…
-          </Button>
-        </div>
-        <p class="mt-1.5 text-[11px] leading-snug text-muted-foreground">
-          Close NMS before overwriting a live save. Steam Cloud can revert edits — disable it briefly.
-        </p>
-      </section>
-    </aside>
-
-    <!-- main -->
-    <main class="flex min-w-0 flex-1 flex-col">
-      <div class="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-        <div class="relative max-w-xs flex-1">
-          <Search class="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input bind:value={search} placeholder="Search bases…" class="h-7 pl-7 text-xs" />
-        </div>
-        <Select.Root type="single" value={sortMode} onValueChange={(v: string) => (sortMode = v ?? "name")}>
-          <Select.Trigger class="h-7 w-36 text-xs">
-            <Select.Value placeholder="Sort" />
-          </Select.Trigger>
-          <Select.Content>
-            <Select.Item value="name">Name A–Z</Select.Item>
-            <Select.Item value="objects">Most objects</Select.Item>
-            <Select.Item value="type">Type</Select.Item>
-          </Select.Content>
-        </Select.Root>
-        <span class="ml-auto hidden text-xs text-muted-foreground sm:inline">{shown.length} shown</span>
+  <DataList
+    columns={[
+      { id: "type", label: "Type", sortable: true },
+      { id: "name", label: "Base", sortable: true },
+      { id: "objects", label: "Objects", sortable: true, align: "right" },
+      { id: "actions", label: "Actions", align: "right" },
+    ]}
+    gridTemplate="grid-cols-[auto_minmax(0,1fr)_auto_auto]"
+    items={shown}
+    keyOf={(b) => b.idx}
+    isSelected={(b) => b.idx === selectedBase}
+    sortKey={sortKey}
+    sortDir={sortDir}
+    onSort={(id) => setSort(id as "type" | "name" | "objects")}
+    onSelect={(b) => (selectedBase = b.idx)}
+    onActivate={() => openExportDialog()}
+    onBackgroundClear={() => (selectedBase = null)}
+  >
+    {#snippet row(b)}
+      <div>
+        <Badge variant={typeBadgeVariant(b.base_type)} class={typeBadgeClass(b.base_type)}>
+          {shortType(b.base_type)}
+        </Badge>
       </div>
-
-      <div class="min-h-0 flex-1 overflow-auto">
-        {#if bases.length === 0}
-          <Empty.Root class="mx-auto mt-16 max-w-sm border-0">
-            <Empty.Header>
-              <Empty.Media variant="icon">
-                <Database />
-              </Empty.Media>
-              <Empty.Title>{loading ? "Decompressing save…" : "No save loaded"}</Empty.Title>
-              <Empty.Description>
-                {#if loading}
-                  Reading LZ4 blocks and deobfuscating keys — this takes a few seconds.
-                {:else if !saveDir}
-                  No Proton save directory found. Point the app at your <span class="font-mono">st_…</span> folder.
-                {:else}
-                  Pick a save on the left and press Load to list its bases.
-                {/if}
-              </Empty.Description>
-            </Empty.Header>
+      <div class="min-w-0">
+        <div class="truncate font-medium" title={b.display_name}>{b.display_name}</div>
+        {#if b.name && b.name !== b.display_name}
+          <div class="truncate font-mono text-[11px] text-muted-foreground" title={b.name}>
+            {b.name}
+          </div>
+        {/if}
+      </div>
+      <div class="text-right font-mono text-xs">{b.objects.toLocaleString()}</div>
+      <div class="flex justify-end">
+        <Button
+          variant="outline"
+          size="xs"
+          onclick={(e) => {
+            e.stopPropagation();
+            selectedBase = b.idx;
+            openExportDialog();
+          }}>Export</Button
+        >
+      </div>
+    {/snippet}
+    {#snippet empty()}
+{#if bases.length === 0}
+        <div class="p-12 text-center">
+          <div class="mx-auto max-w-sm space-y-2">
+            <div class="text-sm font-medium">
+              {loading ? "Decompressing save…" : "No save loaded"}
+            </div>
+            <div class="text-xs text-muted-foreground">
+              {#if loading}
+                Reading LZ4 blocks and deobfuscating keys — this takes a few seconds.
+              {:else if !saveDir}
+                No save directory found. Point the app at your <span class="font-mono">st_…</span> folder.
+              {:else}
+                Pick a save above and press Load to list its bases.
+              {/if}
+            </div>
             {#if !loading && !saveDir}
-              <Empty.Content>
-                <Button size="sm" onclick={doChangeDir}>
-                  <FolderOpen class="size-3.5" />Choose save folder…
-                </Button>
-              </Empty.Content>
-            {:else if !loading && saveDir}
-              <Empty.Content>
-                <div class="flex justify-center gap-2">
-                  <Button size="sm" onclick={doLoad} disabled={!selectedSave}>
-                    <Download class="size-3.5" />Load {selectedSave ?? "save"}
-                  </Button>
-                  <Button size="sm" variant="outline" onclick={doChangeDir}>
-                    <FolderOpen class="size-3.5" />Choose folder…
-                  </Button>
-                </div>
-              </Empty.Content>
-            {/if}
-          </Empty.Root>
-        {:else if shown.length === 0}
-          <Empty.Root class="mx-auto mt-16 max-w-sm border-0">
-            <Empty.Header>
-              <Empty.Media variant="icon">
-                <Search />
-              </Empty.Media>
-              <Empty.Title>No matches</Empty.Title>
-              <Empty.Description>
-                Nothing matches "{search}" in this filter. Try clearing the search or switching to Both.
-              </Empty.Description>
-            </Empty.Header>
-            <Empty.Content>
-              <Button
-                size="sm"
-                variant="outline"
-                onclick={() => {
-                  search = "";
-                  filter = "Both";
-                }}
-              >
-                Clear search & filter
+              <Button size="sm" class="mt-2" onclick={doChangeDir}>
+                <FolderOpen class="size-3.5" />Choose save folder…
               </Button>
-            </Empty.Content>
-          </Empty.Root>
-        {:else}
-          <Table.Root>
-            <Table.Header>
-              <Table.Row>
-                <Table.Head class="w-10">Idx</Table.Head>
-                <Table.Head>Name</Table.Head>
-                <Table.Head class="w-28">Type</Table.Head>
-                <Table.Head class="w-20 text-right">Objects</Table.Head>
-                <Table.Head class="w-28">Owner</Table.Head>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {#each shown as b}
-                <Table.Row
-                  class="cursor-pointer {b.idx === selectedBase ? 'bg-primary/10 hover:bg-primary/15' : ''}"
-                  onclick={() => (selectedBase = b.idx)}
-                  ondblclick={openExportDialog}
-                >
-                  <Table.Cell class="font-mono text-muted-foreground">{b.idx}</Table.Cell>
-                  <Table.Cell>
-                    <div class="truncate font-medium" title={b.display_name}>{b.display_name}</div>
-                    {#if b.name && b.name !== b.display_name}
-                      <div class="truncate font-mono text-[11px] text-muted-foreground" title={b.name}>
-                        {b.name}
-                      </div>
-                    {/if}
-                  </Table.Cell>
-                  <Table.Cell>
-                    <Badge variant={typeBadgeVariant(b.base_type)} class={typeBadgeClass(b.base_type)}>
-                      {shortType(b.base_type)}
-                    </Badge>
-                  </Table.Cell>
-                  <Table.Cell class="text-right font-mono">{b.objects.toLocaleString()}</Table.Cell>
-                  <Table.Cell class="font-mono text-xs text-muted-foreground">
-                    {b.owner_uid ? b.owner_uid.slice(0, 10) : "—"}
-                  </Table.Cell>
-                </Table.Row>
-              {/each}
-            </Table.Body>
-          </Table.Root>
-        {/if}
-      </div>
-
-      <!-- action bar -->
-      <div class="flex shrink-0 flex-wrap items-center gap-2 border-t border-border bg-card px-3 py-2">
-        <Button size="sm" onclick={openExportDialog} disabled={selectedBase === null} title="Shortcut [e]">
-          <Upload class="size-3.5" />Export…
-        </Button>
-        <Button size="sm" variant="outline" onclick={doView} disabled={selectedBase === null} title="Shortcut [v]">
-          <Eye class="size-3.5" />View
-        </Button>
-        <Button size="sm" variant="outline" onclick={openImportDialog} disabled={selectedBase === null} title="Shortcut [i]">
-          <Download class="size-3.5" />Import…
-        </Button>
-        <div class="ml-auto flex gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onclick={() => (recompressMode = "output")}
-            disabled={selectedBase === null}
-            title="Shortcut [r]"
-          >
-            Recompress
-          </Button>
-          <Button
-            size="sm"
-            variant="destructive"
-            onclick={() => (recompressMode = "overwrite")}
-            disabled={selectedBase === null}
-          >
-            Overwrite LIVE
-          </Button>
+            {:else if !loading && saveDir}
+              <div class="mt-2 flex justify-center gap-2">
+                <Button size="sm" onclick={doLoad} disabled={!selectedSave}>
+                  <Download class="size-3.5" />Load {selectedSave ?? "save"}
+                </Button>
+                <Button size="sm" variant="outline" onclick={doChangeDir}>
+                  <FolderOpen class="size-3.5" />Choose folder…
+                </Button>
+              </div>
+            {/if}
+          </div>
         </div>
+      {:else if shown.length === 0}
+        <div class="p-12 text-center">
+          <div class="mx-auto max-w-sm space-y-2">
+            <div class="text-sm font-medium">No matches</div>
+            <div class="text-xs text-muted-foreground">
+              Nothing matches "{search}" in this filter. Try clearing the search or switching to Both.
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              class="mt-2"
+              onclick={() => {
+                search = "";
+                filter = "Both";
+              }}
+            >
+              Clear search & filter
+            </Button>
+          </div>
+        </div>
+      {/if}
+    {/snippet}
+  </DataList>
+
+  {#if sel}
+    <div class="flex min-h-9 shrink-0 flex-wrap items-center gap-2 border-t border-border bg-muted px-3 py-1 text-xs">
+      <span class="truncate font-medium">{sel.display_name}</span>
+      <Badge variant={typeBadgeVariant(sel.base_type)} class={typeBadgeClass(sel.base_type)}>
+        {shortType(sel.base_type)}
+      </Badge>
+      <span class="font-mono whitespace-nowrap text-muted-foreground"
+        >slot {sel.idx} · {sel.objects.toLocaleString()} objs</span
+      >
+      <div class="ml-auto flex items-center gap-1.5">
+        <Button size="xs" onclick={openExportDialog} title="Shortcut [e]">
+          <Upload class="size-3" />Export…
+        </Button>
+        <Button size="xs" variant="outline" onclick={doView} title="Shortcut [v]">
+          <Eye class="size-3" />View
+        </Button>
+        <Button size="xs" variant="outline" onclick={openImportDialog} title="Shortcut [i]">
+          <Download class="size-3" />Import…
+        </Button>
+        <Button variant="ghost" size="xs" onclick={() => (selectedBase = null)}>Clear</Button>
       </div>
-      <div class="shrink-0 truncate border-t border-border px-3 py-1 font-mono text-[11px] text-muted-foreground">
-        {status}
-      </div>
-    </main>
+    </div>
+  {/if}
+
+  <div class="flex h-10 shrink-0 items-center gap-2 border-t border-border bg-muted/30 px-3">
+    <Select.Root
+      type="single"
+      value={filter}
+      onValueChange={(v: string) => v && (filter = v as typeof filter)}
+    >
+      <Select.Trigger class="h-7 w-32 bg-background text-xs">
+        <Select.Value placeholder="Type" />
+      </Select.Trigger>
+      <Select.Content>
+        <Select.Item value="Corvettes">Corvettes</Select.Item>
+        <Select.Item value="Planetary">Planetary</Select.Item>
+        <Select.Item value="Both">Both</Select.Item>
+      </Select.Content>
+    </Select.Root>
+    <div class="relative max-w-sm flex-1">
+      <Search class="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+      <Input bind:value={search} placeholder="Search bases…" class="h-7 pl-7 text-xs" />
+    </div>
+    <span class="ml-auto hidden text-xs text-muted-foreground md:inline">{shown.length} shown</span>
+  </div>
+  <div class="shrink-0 truncate border-t border-border px-3 py-1 font-mono text-[11px] text-muted-foreground">
+    {status}
   </div>
 
   <!-- toasts -->
