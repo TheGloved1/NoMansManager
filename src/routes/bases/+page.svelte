@@ -178,8 +178,10 @@
     saveBasesSort({ key: sortKey, dir: sortDir });
   }
   $effect(() => {
-    if (shown.length && !shown.some((b) => b.idx === selectedBase)) selectedBase = shown[0].idx;
-    if (!shown.length) selectedBase = null;
+    // Never auto-select: a stale selection (filtered out, new save loaded)
+    // simply clears. The user always picks.
+    if (selectedBase !== null && !shown.some((b) => b.idx === selectedBase))
+      selectedBase = null;
   });
 
   function selectedBaseObj(): BaseSummary | null {
@@ -326,6 +328,7 @@
       const res = await api.decompressSave(saveDir, selectedSave);
       bases = res.bases;
       counts = res.counts;
+      selectedBase = null;
       toastOk(`Loaded ${selectedSave}: ${bases.length} bases · backup ${res.backup_path.split("/").pop()}`);
     } catch (e) {
       toastErr(`Load failed: ${e}`);
