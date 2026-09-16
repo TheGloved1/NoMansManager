@@ -1,14 +1,14 @@
 <!-- <div align="center">
-  <img src="static/nms_logo.svg" alt="NoModsSky Banner" width="100%">
+  <img src="static/nms_logo.svg" alt="NoMansManager Banner" width="100%">
 </div> -->
 
 <br/>
 
 <div align="center">
-  <img src="src-tauri/icons/icon.png" alt="NoModsSky Logo" width="96" height="96">
+  <img src="src-tauri/icons/icon.png" alt="NoMansManager Logo" width="96" height="96">
 </div>
 
-<h1 align="center">NoModsSky</h1>
+<h1 align="center">NoMansManager</h1>
 
 <p align="center">
   <strong>A simple cross-platform No Man's Sky mod manager</strong>
@@ -50,9 +50,10 @@ Available for **Windows** (MSI + NSIS), **Linux** (deb + AppImage + rpm), and **
 
 ### Installation
 
-1. Download the latest installer for your platform from [Releases](https://github.com/TheGloved1/NoModsSky/releases) or [Downloads](https://gloved.dev/nomodssky/download)
+1. Download the latest installer for your platform from [Releases](https://github.com/TheGloved1/NoMansManager/releases) or [Downloads](https://gloved.dev/nomodssky/download)
+<!-- TODO(phase 3): point Downloads at gloved.dev/nomansmanager/download once the site rename lands -->
 2. Run the installer
-3. Launch NoModsSky — if your game isn't found automatically, pick your `No Man's Sky` folder when prompted
+3. Launch NoMansManager — if your game isn't found automatically, pick your `No Man's Sky` folder when prompted
 
 ### Building from Source
 
@@ -83,4 +84,4 @@ Requires [Bun](https://bun.sh/) and [Rust](https://www.rust-lang.org/).
 
 ## License
 
-- MIT — NoModsSky is free and open-source software
+- MIT — NoMansManager is free and open-source software

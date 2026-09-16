@@ -48,7 +48,7 @@
 </script>
 
 <svelte:head>
-  <title>NoModsSky — NMS Mod Manager</title>
+  <title>NoMansManager — NMS Mod Manager</title>
 </svelte:head>
 
 <div class="flex h-screen bg-background text-foreground overflow-hidden">
@@ -57,7 +57,7 @@
       <div class="h-7 w-7 rounded-md bg-primary flex items-center justify-center text-primary-foreground font-black text-[11px] shrink-0">NMS</div>
       {#if !collapsed}
         <div class="leading-tight min-w-0">
-          <div class="text-sm font-semibold tracking-tight truncate">NoModsSky <span class="text-[11px] font-normal text-muted-foreground">v{appVersion}</span></div>
+          <div class="text-sm font-semibold tracking-tight truncate">NoMansManager <span class="text-[11px] font-normal text-muted-foreground">v{appVersion}</span></div>
           <div class="text-[11px] text-muted-foreground">Mod Manager</div>
         </div>
       {/if}

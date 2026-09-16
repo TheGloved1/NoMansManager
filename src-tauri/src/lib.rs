@@ -4,16 +4,19 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-// --- XDG dirs (match Python platformdirs with APP_NAME="nms-mod-manager") ---
+// --- App dirs (renamed nms-mod-manager -> nomansmanager; first run migrates) ---
+const LEGACY_DATA_DIR_NAME: &str = "nms-mod-manager";
+const DATA_DIR_NAME: &str = "nomansmanager";
+
 fn app_data_dir() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("nms-mod-manager")
+        .join(DATA_DIR_NAME)
 }
 fn app_config_dir() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("nms-mod-manager")
+        .join(DATA_DIR_NAME)
 }
 fn store_dir() -> PathBuf {
     app_data_dir().join("mods")
@@ -29,7 +32,7 @@ fn ensure_dirs() {
         app_data_dir(),
         app_config_dir(),
         dirs::data_dir()
-            .map(|p| p.join("nms-mod-manager"))
+            .map(|p| p.join(DATA_DIR_NAME))
             .unwrap_or_else(|| PathBuf::from(".")),
         store_dir(),
         profiles_dir(),
@@ -37,6 +40,25 @@ fn ensure_dirs() {
         let _ = fs::create_dir_all(&p);
     }
     // also state dir linux ~/.local/state -> dirs::data_local_dir alternative not needed, keep simple
+}
+
+/// One-time move of user data (mods, profiles, settings) from the
+/// pre-rename `nms-mod-manager` directories. Old dirs are left in place
+/// as a backup; nothing is deleted.
+fn migrate_legacy_data_dir() {
+    let data_base = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
+    let cfg_base = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+    for (base, old_name, new_dir) in [
+        (&data_base, LEGACY_DATA_DIR_NAME, app_data_dir()),
+        (&cfg_base, LEGACY_DATA_DIR_NAME, app_config_dir()),
+    ] {
+        let old = base.join(old_name);
+        if old.is_dir() && !new_dir.exists() {
+            if copy_dir_all(&old, &new_dir).is_err() {
+                let _ = fs::create_dir_all(&new_dir);
+            }
+        }
+    }
 }
 
 // --- Models ---
@@ -1042,6 +1064,7 @@ fn get_downloads_dir() -> Result<String, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    migrate_legacy_data_dir();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

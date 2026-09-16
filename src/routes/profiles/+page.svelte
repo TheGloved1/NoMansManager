@@ -162,7 +162,7 @@
 
       <Card class="border-dashed">
         <CardContent class="p-4 flex items-center justify-between">
-          <div class="text-xs text-muted-foreground">Profiles are stored in <span class="font-mono">~/.local/share/nms-mod-manager/profiles</span></div>
+          <div class="text-xs text-muted-foreground">Profiles are stored in <span class="font-mono">~/.local/share/nomansmanager/profiles</span></div>
           <Button variant="outline" size="xs" onclick={refresh}>Refresh</Button>
         </CardContent>
       </Card>

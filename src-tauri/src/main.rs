@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    nomodssky_lib::run()
+    nomansmanager_lib::run()
 }
