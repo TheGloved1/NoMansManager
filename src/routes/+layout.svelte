@@ -3,9 +3,8 @@
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { loadConfigNative } from '$lib/config';
-  import pkg from '../../package.json';
   let { children } = $props();
-  const appVersion = pkg.version;
+  const appVersion = __APP_VERSION__;
 
   const themes = ['default','rose-pine','rose-pine-moon','rose-pine-dawn','catppuccin-mocha','catppuccin-macchiato','catppuccin-frappe','catppuccin-latte'];
   const fonts = ['inter','jetbrains','geist','space','manrope','sora'];

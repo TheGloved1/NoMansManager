@@ -61,6 +61,7 @@ fn migrate_legacy_data_dir() {
     let data_base = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
     let cfg_base = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
 
+
     // content dirs: merge missing entries
     for (old_sub, new_sub) in [
         ("mods", store_dir()),
@@ -160,10 +161,20 @@ fn migrate_legacy_data_dir() {
                 ),
             }
         } else {
-            eprintln!(
-                "migration: keeping {} (settings not mirrored yet)",
-                old_plugin_dir.display()
-            );
+            // Only nag when the new side is missing/broken (actionable). A valid
+            // but different new file means the user customized it — the old dir
+            // stays quietly as a backup.
+            let new_valid = fs::read(&new_plugin_settings)
+                .ok()
+                .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+                .map(|v| v.is_object())
+                .unwrap_or(false);
+            if !new_valid {
+                eprintln!(
+                    "migration: keeping {} (settings not mirrored yet)",
+                    old_plugin_dir.display()
+                );
+            }
         }
     }
 }
