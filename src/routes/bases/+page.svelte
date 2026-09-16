@@ -74,7 +74,7 @@
   let exportFormat: "json" | "nmsbase" = $state("json");
   let importing = $state(false);
   let importingBusy = $state(false);
-  let importMode: "paste" | "file" = $state("paste");
+  let importMode: "paste" | "file" = $state("file");
   let importText = $state("");
   // Held outside reactivity on purpose: full base files can be tens of MB
   // and must never be rendered (that blew the dialog layout apart).
@@ -92,7 +92,7 @@
     hasImportFile = false;
     importFileName = null;
     importFileInfo = null;
-    importMode = "paste";
+    importMode = "file";
   }
 
   function summarizeImport(raw: string): { objects: number; kind: string } | { error: string } {
@@ -942,20 +942,20 @@
       </Dialog.Header>
       <div class="grid grid-cols-2 gap-1 rounded-lg border border-border bg-background p-1">
         <button
-          class="rounded-md px-1 py-1 text-xs font-medium transition {importMode === 'paste'
-            ? 'bg-primary text-primary-foreground'
-            : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
-          onclick={() => (importMode = "paste")}
-        >
-          Paste JSON
-        </button>
-        <button
           class="rounded-md px-1 py-1 text-xs font-medium transition {importMode === 'file'
             ? 'bg-primary text-primary-foreground'
             : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
           onclick={() => (importMode = "file")}
         >
           From file
+        </button>
+        <button
+          class="rounded-md px-1 py-1 text-xs font-medium transition {importMode === 'paste'
+            ? 'bg-primary text-primary-foreground'
+            : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+          onclick={() => (importMode = "paste")}
+        >
+          Paste JSON
         </button>
       </div>
       {#if importMode === "paste"}
