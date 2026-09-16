@@ -70,6 +70,7 @@ export const api = {
   exportNmsbase: (idx: number, outPath?: string | null) =>
     invoke<ExportResult>("export_nmsbase", { idx, outPath }),
   getBaseJson: (idx: number) => invoke<string>("get_base_json", { idx }),
+  getNmsbaseText: (idx: number) => invoke<string>("get_nmsbase_text", { idx }),
   readSaveTextFile: (path: string) => invoke<string>("read_text_file", { path }),
   importBase: (idx: number, payload: string) =>
     invoke<BaseImportResult>("import_base", { idx, payload }),

@@ -1323,6 +1323,7 @@ pub fn run() {
             saves::decompress_save,
             saves::list_bases,
             saves::get_base_json,
+            saves::get_nmsbase_text,
             saves::read_text_file,
             saves::export_base,
             saves::export_nmsbase,

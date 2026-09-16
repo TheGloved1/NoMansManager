@@ -277,6 +277,29 @@
     }
   }
 
+  let copying = $state(false);
+  async function doExportCopy() {
+    const b = selectedBaseObj();
+    if (!b) return toastErr("Select a base first");
+    copying = true;
+    try {
+      const text =
+        exportFormat === "nmsbase" ? await api.getNmsbaseText(b.idx) : await api.getBaseJson(b.idx);
+      if (await copyText(text)) {
+        toastOk(
+          `'${b.display_name}' copied as ${exportFormat === "nmsbase" ? "NMSBASE — paste after ^BASE_FLAG" : "JSON — paste in Base Builder"}`,
+        );
+        exportOpen = false;
+      } else {
+        toastErr("Clipboard copy failed");
+      }
+    } catch (e) {
+      toastErr(`Copy failed: ${e}`);
+    } finally {
+      copying = false;
+    }
+  }
+
   async function doExportConfirm() {
     const b = selectedBaseObj();
     if (!b) return toastErr("Select a base first");
@@ -798,6 +821,9 @@
       </div>
       <Dialog.Footer>
         <Button variant="outline" onclick={() => (exportOpen = false)}>Cancel</Button>
+        <Button variant="outline" onclick={doExportCopy} disabled={copying}>
+          {#if copying}<LoaderCircle class="size-3.5 animate-spin" />Copying…{:else}<Copy class="size-3.5" />Copy{/if}
+        </Button>
         <Button onclick={doExportConfirm}>
           <Upload class="size-3.5" />Save…
         </Button>

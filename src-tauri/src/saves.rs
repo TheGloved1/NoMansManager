@@ -885,6 +885,31 @@ pub(crate) fn get_base_json(
     serde_json::to_string_pretty(&base).map_err(|e| e.to_string())
 }
 
+fn nmsbase_text(base: &serde_json::Value) -> Result<String, String> {
+    let objs = base
+        .get("Objects")
+        .and_then(|o| o.as_array())
+        .cloned()
+        .unwrap_or_default();
+    if objs.is_empty() {
+        return Ok(String::new());
+    }
+    let parts: Result<Vec<String>, _> = objs
+        .iter()
+        .map(|o| serde_json::to_string_pretty(o).map_err(|e| e.to_string()))
+        .collect();
+    Ok(format!(",\n{}", parts?.join(",\n")))
+}
+
+#[tauri::command]
+pub(crate) fn get_nmsbase_text(
+    state: tauri::State<Mutex<SaveState>>,
+    idx: usize,
+) -> Result<String, String> {
+    let (base, _, _) = get_base(&state, idx)?;
+    nmsbase_text(&base)
+}
+
 #[tauri::command]
 pub(crate) fn read_text_file(path: String) -> Result<String, String> {
     // std::fs has no capability-scope limits, unlike the fs plugin.
@@ -977,20 +1002,7 @@ pub(crate) fn export_nmsbase(
         let _ = fs::copy(&dest, &bak);
     }
 
-    let objs = base
-        .get("Objects")
-        .and_then(|o| o.as_array())
-        .cloned()
-        .unwrap_or_default();
-    let txt = if objs.is_empty() {
-        String::new()
-    } else {
-        let parts: Result<Vec<String>, _> = objs
-            .iter()
-            .map(|o| serde_json::to_string_pretty(o).map_err(|e| e.to_string()))
-            .collect();
-        format!(",\n{}", parts?.join(",\n"))
-    };
+    let txt = nmsbase_text(&base)?;
     fs::write(&dest, &txt).map_err(|e| e.to_string())?;
 
     // history copy
