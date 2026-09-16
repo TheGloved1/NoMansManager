@@ -1,13 +1,13 @@
 [package]
-name = "nomodssky"
+name = "nomansmanager"
 version = "26.9.3"
-description = "No Man's Sky Mod Manager — Tauri + SvelteKit"
+description = "No Man's Sky Manager — Tauri + SvelteKit"
 authors = ["TheGloved1"]
 license = "MIT"
 edition = "2021"
 
 [lib]
-name = "nomodssky_lib"
+name = "nomansmanager_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -27,6 +27,9 @@ walkdir = "2"
 regex = "1"
 uuid = { version = "1", features = ["v4"] }
 zip = "4"
+lz4_flex = "0.11"
+reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"], default-features = false }
+chrono = "0.4"
 
 [profile.dev]
 incremental = true

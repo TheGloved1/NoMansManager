@@ -3,17 +3,23 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
-// --- XDG dirs (match Python platformdirs with APP_NAME="nms-mod-manager") ---
+mod saves;
+
+// --- App dirs (renamed nms-mod-manager -> nomansmanager; first run migrates) ---
+const LEGACY_DATA_DIR_NAME: &str = "nms-mod-manager";
+const DATA_DIR_NAME: &str = "nomansmanager";
+
 fn app_data_dir() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("nms-mod-manager")
+        .join(DATA_DIR_NAME)
 }
 fn app_config_dir() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("nms-mod-manager")
+        .join(DATA_DIR_NAME)
 }
 fn store_dir() -> PathBuf {
     app_data_dir().join("mods")
@@ -29,7 +35,7 @@ fn ensure_dirs() {
         app_data_dir(),
         app_config_dir(),
         dirs::data_dir()
-            .map(|p| p.join("nms-mod-manager"))
+            .map(|p| p.join(DATA_DIR_NAME))
             .unwrap_or_else(|| PathBuf::from(".")),
         store_dir(),
         profiles_dir(),
@@ -37,6 +43,25 @@ fn ensure_dirs() {
         let _ = fs::create_dir_all(&p);
     }
     // also state dir linux ~/.local/state -> dirs::data_local_dir alternative not needed, keep simple
+}
+
+/// One-time move of user data (mods, profiles, settings) from the
+/// pre-rename `nms-mod-manager` directories. Old dirs are left in place
+/// as a backup; nothing is deleted.
+fn migrate_legacy_data_dir() {
+    let data_base = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
+    let cfg_base = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+    for (base, old_name, new_dir) in [
+        (&data_base, LEGACY_DATA_DIR_NAME, app_data_dir()),
+        (&cfg_base, LEGACY_DATA_DIR_NAME, app_config_dir()),
+    ] {
+        let old = base.join(old_name);
+        if old.is_dir() && !new_dir.exists() {
+            if copy_dir_all(&old, &new_dir).is_err() {
+                let _ = fs::create_dir_all(&new_dir);
+            }
+        }
+    }
 }
 
 // --- Models ---
@@ -1042,12 +1067,14 @@ fn get_downloads_dir() -> Result<String, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    migrate_legacy_data_dir();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(Mutex::new(saves::SaveState::default()))
         .invoke_handler(tauri::generate_handler![
             find_nms_install,
             get_mods_dir,
@@ -1070,7 +1097,22 @@ pub fn run() {
             can_symlink,
             remove_store_mod,
             open_folder,
-            get_downloads_dir
+            get_downloads_dir,
+            saves::find_save_dirs,
+            saves::find_save_dir,
+            saves::list_save_files,
+            saves::list_save_subdirs,
+            saves::decompress_save,
+            saves::list_bases,
+            saves::get_base_json,
+            saves::read_text_file,
+            saves::export_base,
+            saves::export_nmsbase,
+            saves::import_base,
+            saves::recompress_save,
+            saves::backup_saves,
+            saves::list_backups,
+            saves::restore_save
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

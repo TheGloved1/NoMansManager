@@ -1,17 +1,17 @@
 <!-- <div align="center">
-  <img src="static/nms_logo.svg" alt="NoModsSky Banner" width="100%">
+  <img src="static/nms_logo.svg" alt="NoMansManager Banner" width="100%">
 </div> -->
 
 <br/>
 
 <div align="center">
-  <img src="src-tauri/icons/icon.png" alt="NoModsSky Logo" width="96" height="96">
+  <img src="src-tauri/icons/icon.png" alt="NoMansManager Logo" width="96" height="96">
 </div>
 
-<h1 align="center">NoModsSky</h1>
+<h1 align="center">NoMansManager</h1>
 
 <p align="center">
-  <strong>A simple cross-platform No Man's Sky mod manager</strong>
+  <strong>A simple cross-platform No Man's Sky mod and base manager</strong>
 </p>
 
 <p align="center">
@@ -32,6 +32,7 @@
 - **Enable / disable & reorder** — Click to select (`Ctrl`/`Cmd` to add, `Shift` for range, click empty space or `Esc` to clear), double-click to toggle, drag with the placement line to reorder, or use **Auto** to sort by type and name. Bottom in list wins when mods overlap.
 - **Search & filter** — Filter by Enabled/Disabled and search by name.
 - **Profiles** — Keep separate mod sets for different saves. Create, duplicate, rename, delete, and switch on the Profiles page.
+- **Bases** — Extract Corvette, freighter, and planetary bases from your saves, edit them in Base Builder, and inject them back (with automatic backups). See the Bases page.
 - **Customization** — Change theme (Default, Rose Pine, Rose Pine Moon/Dawn, Catppuccin Mocha/Macchiato/Frappe/Latte) and font (Inter, Geist, Space Grotesk, etc.) in Settings. Applies instantly.
 
 ## Extras
@@ -50,9 +51,9 @@ Available for **Windows** (MSI + NSIS), **Linux** (deb + AppImage + rpm), and **
 
 ### Installation
 
-1. Download the latest installer for your platform from [Releases](https://github.com/TheGloved1/NoModsSky/releases) or [Downloads](https://gloved.dev/nomodssky/download)
+1. Download the latest installer for your platform from [Releases](https://github.com/TheGloved1/NoMansManager/releases) or [Downloads](https://gloved.dev/nomansmanager/download)
 2. Run the installer
-3. Launch NoModsSky — if your game isn't found automatically, pick your `No Man's Sky` folder when prompted
+3. Launch NoMansManager — if your game isn't found automatically, pick your `No Man's Sky` folder when prompted
 
 ### Building from Source
 
@@ -83,4 +84,4 @@ Requires [Bun](https://bun.sh/) and [Rust](https://www.rust-lang.org/).
 
 ## License
 
-- MIT — NoModsSky is free and open-source software
+- MIT — NoMansManager is free and open-source software

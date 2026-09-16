@@ -116,7 +116,7 @@ import { Separator } from '$lib/components/ui/separator';
       <Button variant="ghost" size="sm" onclick={() => goto('/')}>← Back</Button>
       <div class="h-4 w-px bg-border"></div>
       <div class="text-sm font-semibold">Settings</div>
-      <span class="hidden sm:inline text-xs text-muted-foreground">Customize NoModsSky</span>
+      <span class="hidden sm:inline text-xs text-muted-foreground">Customize NoMansManager</span>
     </div>
     <div class="text-xs text-muted-foreground">{status}</div>
   </header>

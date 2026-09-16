@@ -1,10 +1,25 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppConfig,
+  BackupInfo,
+  BaseImportResult,
+  BaseSummary,
+  DecompressResult,
   DeployResult,
+  ExportResult,
   ImportResult,
   Mod,
   Profile,
+  SaveFileInfo,
+} from "./types";
+
+export type {
+  BackupInfo,
+  BaseImportResult,
+  BaseSummary,
+  DecompressResult,
+  ExportResult,
+  SaveFileInfo,
 } from "./types";
 
 export const api = {
@@ -38,4 +53,31 @@ export const api = {
   canSymlink: () => invoke<boolean>("can_symlink"),
   removeStoreMod: (id: string) => invoke<void>("remove_store_mod", { id }),
   openFolder: (path: string) => invoke<void>("open_folder", { path }),
+  // --- Bases (save editing) ---
+  findSaveDirs: () => invoke<string[]>("find_save_dirs"),
+  findSaveDir: (prefer?: string | null) =>
+    invoke<string | null>("find_save_dir", { prefer }),
+  listSaveFiles: (saveDir: string) =>
+    invoke<SaveFileInfo[]>("list_save_files", { saveDir }),
+  listSaveSubdirs: (saveDir: string) =>
+    invoke<string[]>("list_save_subdirs", { saveDir }),
+  decompressSave: (saveDir: string, saveFile: string) =>
+    invoke<DecompressResult>("decompress_save", { saveDir, saveFile }),
+  listBases: (filter?: string | null) =>
+    invoke<BaseSummary[]>("list_bases", { filter }),
+  exportBase: (idx: number, outPath?: string | null) =>
+    invoke<ExportResult>("export_base", { idx, outPath }),
+  exportNmsbase: (idx: number, outPath?: string | null) =>
+    invoke<ExportResult>("export_nmsbase", { idx, outPath }),
+  getBaseJson: (idx: number) => invoke<string>("get_base_json", { idx }),
+  readSaveTextFile: (path: string) => invoke<string>("read_text_file", { path }),
+  importBase: (idx: number, payload: string) =>
+    invoke<BaseImportResult>("import_base", { idx, payload }),
+  recompressSave: (mode: string) => invoke<string>("recompress_save", { mode }),
+  backupSaves: (saveDir: string) =>
+    invoke<string[]>("backup_saves", { saveDir }),
+  listBackups: (stem?: string | null) =>
+    invoke<BackupInfo[]>("list_backups", { stem }),
+  restoreSave: (backupPath: string, saveDir: string, saveFile: string) =>
+    invoke<string>("restore_save", { backupPath, saveDir, saveFile }),
 };
