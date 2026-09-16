@@ -58,7 +58,7 @@
       {#if !collapsed}
         <div class="leading-tight min-w-0">
           <div class="text-sm font-semibold tracking-tight truncate">NoMansManager <span class="text-[11px] font-normal text-muted-foreground">v{appVersion}</span></div>
-          <div class="text-[11px] text-muted-foreground">Mod Manager</div>
+          <div class="text-[11px] text-muted-foreground">Mods & Bases</div>
         </div>
       {/if}
     </div>
@@ -70,6 +70,10 @@
       <a href="/profiles" title="Profiles" class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition {isActive('/profiles') ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'} {collapsed ? 'justify-center px-1' : ''}">
         <span class="text-sm leading-none">👥</span>
         {#if !collapsed}<span>Profiles</span>{/if}
+      </a>
+      <a href="/bases" title="Bases" class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition {isActive('/bases') ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'} {collapsed ? 'justify-center px-1' : ''}">
+        <span class="text-sm leading-none shrink-0">🛰</span>
+        {#if !collapsed}<span>Bases</span>{/if}
       </a>
       <a href="/settings" title="Settings" class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition {isActive('/settings') ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'} {collapsed ? 'justify-center px-1' : ''}">
         <span class="text-sm leading-none">⚙</span>

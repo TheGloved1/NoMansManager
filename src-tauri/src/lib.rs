@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+mod saves;
 
 // --- App dirs (renamed nms-mod-manager -> nomansmanager; first run migrates) ---
 const LEGACY_DATA_DIR_NAME: &str = "nms-mod-manager";
@@ -1071,6 +1074,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(Mutex::new(saves::SaveState::default()))
         .invoke_handler(tauri::generate_handler![
             find_nms_install,
             get_mods_dir,
@@ -1093,7 +1097,22 @@ pub fn run() {
             can_symlink,
             remove_store_mod,
             open_folder,
-            get_downloads_dir
+            get_downloads_dir,
+            saves::find_save_dirs,
+            saves::find_save_dir,
+            saves::list_save_files,
+            saves::list_save_subdirs,
+            saves::decompress_save,
+            saves::list_bases,
+            saves::get_base_json,
+            saves::read_text_file,
+            saves::export_base,
+            saves::export_nmsbase,
+            saves::import_base,
+            saves::recompress_save,
+            saves::backup_saves,
+            saves::list_backups,
+            saves::restore_save
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
