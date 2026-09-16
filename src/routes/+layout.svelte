@@ -54,7 +54,7 @@
 <div class="flex h-screen bg-background text-foreground overflow-hidden">
   <aside class="shrink-0 flex flex-col bg-card border-r transition-all duration-200 {collapsed ? 'w-[56px] items-center' : 'w-[220px]'}">
     <div class="h-12 flex items-center gap-2 px-3 border-b shrink-0 w-full {collapsed ? 'justify-center' : ''}">
-      <div class="h-7 w-7 rounded-md bg-primary flex items-center justify-center text-primary-foreground font-black text-[11px] shrink-0">NMS</div>
+      <div class="h-7 w-7 rounded-md bg-primary flex items-center justify-center text-primary-foreground font-black text-[11px] shrink-0">NMM</div>
       {#if !collapsed}
         <div class="leading-tight min-w-0">
           <div class="text-sm font-semibold tracking-tight truncate">NoMansManager <span class="text-[11px] font-normal text-muted-foreground">v{appVersion}</span></div>

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SVG="${1:-static/nms_logo.svg}"
+SVG="${1:-static/nmm_logo.svg}"
 ICON_DIR="src-tauri/icons"
 STATIC_DIR="static"
 

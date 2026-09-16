@@ -153,12 +153,44 @@ function generateChangelog(next: string, baseTag?: string): { changelogEntry: st
   const log = execSync(`git log ${range} --pretty=format:"%s%n" --reverse`, { encoding: 'utf-8' });
   const lines = log.split('\n').filter(Boolean);
 
-  const added: string[] = [];
-  const fixed: string[] = [];
-  const changed: string[] = [];
-  const other: string[] = [];
+  const addedRaw: string[] = [];
+  const fixedRaw: string[] = [];
+  const changedRaw: string[] = [];
+  const otherRaw: string[] = [];
 
   const pattern = /^(\w+)(\(.*?\))?!?:\s(.+)$/;
+
+  // Collapse near-duplicate messages ("Update README" x4, "fix typo" vs
+  // "Fix typo."): normalize case/punctuation/whitespace, then within each
+  // section keep the longest entry among ones that match exactly or where
+  // one contains the other.
+  function normalize(s: string): string {
+    return s
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+  function dedupe(entries: string[]): string[] {
+    const kept: { raw: string; norm: string }[] = [];
+    for (const entry of entries) {
+      const norm = normalize(entry);
+      if (!norm) continue;
+      let dominated = false;
+      for (const k of kept) {
+        if (k.norm === norm || k.norm.includes(norm) || norm.includes(k.norm)) {
+          dominated = true;
+          if (norm.length > k.norm.length) {
+            k.raw = entry;
+            k.norm = norm;
+          }
+          break;
+        }
+      }
+      if (!dominated) kept.push({ raw: entry, norm });
+    }
+    return kept.map((k) => k.raw);
+  }
 
   for (const line of lines) {
     const m = line.match(pattern);
@@ -167,25 +199,30 @@ function generateChangelog(next: string, baseTag?: string): { changelogEntry: st
       const entry = scope ? `**${scope.slice(1, -1)}**: ${msg}` : msg;
       switch (type) {
         case 'feat':
-          added.push(entry);
+          addedRaw.push(entry);
           break;
         case 'fix':
-          fixed.push(entry);
+          fixedRaw.push(entry);
           break;
         case 'refactor':
         case 'perf':
         case 'style':
-          changed.push(entry);
+          changedRaw.push(entry);
           break;
         default:
-          other.push(entry);
+          otherRaw.push(entry);
           break;
       }
     } else {
       // Non-conventional commit: treat as Other
-      other.push(line);
+      otherRaw.push(line);
     }
   }
+
+  const added = dedupe(addedRaw);
+  const fixed = dedupe(fixedRaw);
+  const changed = dedupe(changedRaw);
+  const other = dedupe(otherRaw);
 
   let body = '';
   if (added.length) body += '\n\n### Added\n\n' + added.map((e) => `- ${e}`).join('\n');

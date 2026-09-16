@@ -1,5 +1,5 @@
 <!-- <div align="center">
-  <img src="static/nms_logo.svg" alt="NoMansManager Banner" width="100%">
+  <img src="static/nmm_logo.svg" alt="NoMansManager Banner" width="100%">
 </div> -->
 
 <br/>
