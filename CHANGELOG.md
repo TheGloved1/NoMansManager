@@ -1,3 +1,10 @@
+## [26.9.7] - 2026-09-17
+
+### Added
+
+- auto-deploy switch in settings with deploy-on-change
+- auto-deploy on by default
+
 ## [26.9.6] - 2026-09-16
 
 ### Fixed
