@@ -201,6 +201,8 @@ export const api = {
       (res: DecompressResult) => `${res.bases.length} bases`,
       () => invoke<DecompressResult>("decompress_save", { saveDir, saveFile }),
     ),
+  unloadSave: () =>
+    logged("bases", "Unload save", undefined, () => invoke<void>("unload_save")),
   listBases: (filter?: string | null) =>
     logged(
       "bases",

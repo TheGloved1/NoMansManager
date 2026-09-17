@@ -16,6 +16,7 @@
     saveSaveDirOverride,
   } from "$lib/bases-settings";
   import DataList from "$lib/components/data-list.svelte";
+  import { saveBasesView, takeBasesView } from "$lib/bases-store";
   import type { BasesSortDir, BasesSortKey } from "$lib/bases-settings";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
@@ -38,6 +39,7 @@
     FolderOpen,
     Info,
     LoaderCircle,
+    RefreshCw,
     Search,
     Settings,
     Upload,
@@ -47,6 +49,7 @@
   // --- saves ---
   let saveDir: string | null = $state(null);
   let saveDirManual = $state(false);
+  let loadedSave: string | null = $state(null);
   let saveFiles: SaveFileInfo[] = $state([]);
   let selectedSave: string | null = $state(null);
   let loading = $state(false);
@@ -59,6 +62,7 @@
   let search = $state("");
   let sortKey: BasesSortKey = $state("name");
   let sortDir: BasesSortDir = $state("asc");
+  let loadedMtime: number | null = $state(null);
 
   // --- status + toasts ---
   let status = $state("Ready. Autodetecting Proton dir…");
@@ -327,6 +331,11 @@
       bases = [];
       selectedBase = null;
       counts = null;
+      loadedSave = null;
+      loadedMtime = null;
+      try {
+        await api.unloadSave();
+      } catch {}
       await refreshSaves();
       if (!saveFiles.length)
         toastErr(
@@ -345,6 +354,11 @@
     bases = [];
     selectedBase = null;
     counts = null;
+    loadedSave = null;
+    loadedMtime = null;
+    try {
+      await api.unloadSave();
+    } catch {}
     await detectDir();
   }
 
@@ -353,21 +367,44 @@
       toastErr("No save selected");
       return;
     }
+    const target = selectedSave;
     loading = true;
-    status = `Decompressing ${selectedSave}… (lz4 + mapping)`;
+    status = `Decompressing ${target}… (lz4 + mapping)`;
     try {
-      const res = await api.decompressSave(saveDir, selectedSave);
+      const res = await api.decompressSave(saveDir, target);
       bases = res.bases;
       counts = res.counts;
       selectedBase = null;
+      loadedSave = target;
+      loadedMtime =
+        saveFiles.find((f) => f.name === target)?.mtime_ms ?? null;
       toastOk(
-        `Loaded ${selectedSave}: ${bases.length} bases`,
+        `Loaded ${target}: ${bases.length} bases`,
       );
     } catch (e) {
       toastErr(`Load failed: ${e}`);
     } finally {
       loading = false;
     }
+  }
+
+  let isLoaded = $derived(
+    loadedSave !== null && selectedSave === loadedSave && bases.length > 0,
+  );
+
+  async function doUnload() {
+    try {
+      await api.unloadSave();
+    } catch (e) {
+      toastErr(`Unload failed: ${e}`);
+      return;
+    }
+    bases = [];
+    counts = null;
+    selectedBase = null;
+    loadedSave = null;
+    loadedMtime = null;
+    status = "Save unloaded. Pick a save and press Load.";
   }
 
   function safeFileStem(name: string, ext: string): string {
@@ -575,22 +612,80 @@
     else if (e.key === "v") doView();
     else if (e.key === "i") openImportDialog();
     else if (e.key === "r") recompressMode = "output";
+    else if (e.key === "u") {
+      if (isLoaded) doUnload();
+    }
     else if (e.key === "c") filter = "Corvettes";
     else if (e.key === "p") filter = "Planetary";
     else if (e.key === "b") filter = "Both";
   }
 
+  function snapshotView() {
+    saveBasesView({
+      saveDir,
+      saveDirManual,
+      saveFiles,
+      selectedSave,
+      loadedSave,
+      bases,
+      counts,
+      selectedBase,
+      search,
+      filter,
+      sortKey,
+      sortDir,
+      loadedMtime,
+    });
+  }
+
+  async function revalidate() {
+    // Repainted from cache — check the file didn't change under us.
+    if (!saveDir || !selectedSave || !bases.length) return;
+    try {
+      await refreshSaves();
+    } catch {
+      return;
+    }
+    const current = saveFiles.find((f) => f.name === selectedSave)?.mtime_ms ?? null;
+    if (current !== null && current !== loadedMtime) {
+      toastOk("Save changed on disk — reloading");
+      await doLoad();
+    }
+  }
+
   onMount(() => {
-    (async () => {
-      try {
-        const s = await loadBasesSort();
-        sortKey = s.key;
-        sortDir = s.dir;
-      } catch {}
-    })();
-    detectDir();
+    const cached = takeBasesView();
+    if (cached && cached.bases.length) {
+      saveDir = cached.saveDir;
+      saveDirManual = cached.saveDirManual;
+      saveFiles = cached.saveFiles;
+      selectedSave = cached.selectedSave;
+      loadedSave = cached.loadedSave;
+      bases = cached.bases;
+      counts = cached.counts;
+      selectedBase = cached.selectedBase;
+      search = cached.search;
+      filter = cached.filter;
+      sortKey = cached.sortKey;
+      sortDir = cached.sortDir;
+      loadedMtime = cached.loadedMtime;
+      status = `Ready. ${bases.length} bases shown.`;
+      revalidate();
+    } else {
+      (async () => {
+        try {
+          const s = await loadBasesSort();
+          sortKey = s.key;
+          sortDir = s.dir;
+        } catch {}
+      })();
+      detectDir();
+    }
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      snapshotView();
+    };
   });
 </script>
 
@@ -643,10 +738,31 @@
           {/each}
         </Select.Content>
       </Select.Root>
-      <Button size="sm" onclick={doLoad} disabled={loading || !selectedSave}>
-        {#if loading}<LoaderCircle
-            class="size-3.5 animate-spin"
-          />Loading…{:else}<Download class="size-3.5" />Load{/if}
+      {#if isLoaded}
+        <Button
+          size="sm"
+          variant="outline"
+          onclick={doUnload}
+          disabled={loading}
+          title="Unload save from memory (U)"
+        >
+          <X class="size-3.5" />Unload
+        </Button>
+      {:else}
+        <Button size="sm" onclick={doLoad} disabled={loading || !selectedSave}>
+          {#if loading}<LoaderCircle
+              class="size-3.5 animate-spin"
+            />Loading…{:else}<Download class="size-3.5" />Load{/if}
+        </Button>
+      {/if}
+      <Button
+        variant="outline"
+        size="icon-sm"
+        onclick={doLoad}
+        disabled={loading || !selectedSave || bases.length === 0}
+        title="Reload save from disk"
+      >
+        <RefreshCw class="size-3.5" />
       </Button>
     {/if}
     <div class="mx-1 h-6 w-px bg-border"></div>

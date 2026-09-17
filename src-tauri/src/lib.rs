@@ -1438,6 +1438,7 @@ pub fn run() {
             saves::list_save_files,
             saves::list_save_subdirs,
             saves::decompress_save,
+            saves::unload_save,
             saves::list_bases,
             saves::get_base_json,
             saves::get_nmsbase_text,

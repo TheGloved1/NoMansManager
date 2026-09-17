@@ -774,6 +774,29 @@ pub(crate) struct DecompressResult {
 }
 
 #[tauri::command]
+pub(crate) fn unload_save(
+    app: tauri::AppHandle,
+    state: tauri::State<Mutex<SaveState>>,
+) -> Result<(), String> {
+    use crate::logs::dlog;
+    let mut st = state.lock().map_err(|e| e.to_string())?;
+    let had = st.save_file.take();
+    st.save_dir = None;
+    st.save_json = None;
+    drop(st);
+    dlog(
+        &app,
+        "info",
+        "bases",
+        match had {
+            Some(f) => format!("unloaded '{f}' from memory"),
+            None => "unload requested (nothing loaded)".to_string(),
+        },
+    );
+    Ok(())
+}
+
+#[tauri::command]
 pub(crate) fn decompress_save(
     app: tauri::AppHandle,
     state: tauri::State<Mutex<SaveState>>,
