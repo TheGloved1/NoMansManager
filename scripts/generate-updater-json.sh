@@ -7,24 +7,16 @@ echo "Generating updater fragment for $PLATFORM version $PKG_VER"
 
 case "$PLATFORM" in
   windows-x86_64)
-    BUNDLE_DIR="src-tauri/target/release/bundle/msi"
-    FILE_PATTERN="*.msi"
-    FALLBACK_DIR="src-tauri/target/release/bundle/nsis"
-    FALLBACK_PATTERN="*.exe"
+    CANDIDATES=(src-tauri/target/release/bundle/msi/NoMansManager.msi)
     PLATFORM_KEY="windows-x86_64"
     ;;
   linux-x86_64)
-    BUNDLE_DIR="src-tauri/target/release/bundle/appimage"
-    FILE_PATTERN="*.AppImage"
-    FALLBACK_DIR="src-tauri/target/release/bundle/deb"
-    FALLBACK_PATTERN="*.deb"
+    CANDIDATES=(src-tauri/target/release/bundle/appimage/NoMansManager.AppImage)
     PLATFORM_KEY="linux-x86_64"
     ;;
   darwin-aarch64)
-    BUNDLE_DIR="src-tauri/target/release/bundle/macos"
-    FILE_PATTERN="*.app.tar.gz"
-    FALLBACK_DIR="src-tauri/target/release/bundle/dmg"
-    FALLBACK_PATTERN="*.dmg"
+    # NOTE: the updater requires the .tar.gz — never the .dmg.
+    CANDIDATES=(src-tauri/target/release/bundle/macos/NoMansManager.tar.gz)
     PLATFORM_KEY="darwin-aarch64"
     ;;
   *)
@@ -33,13 +25,14 @@ case "$PLATFORM" in
     ;;
 esac
 
-BUNDLE_FILE=$(ls "$BUNDLE_DIR"/$FILE_PATTERN 2>/dev/null | head -1)
-if [ -z "$BUNDLE_FILE" ] && [ -n "$FALLBACK_DIR" ]; then
-  BUNDLE_FILE=$(ls "$FALLBACK_DIR"/$FALLBACK_PATTERN 2>/dev/null | head -1)
-fi
+BUNDLE_FILE=""
+for c in "${CANDIDATES[@]}"; do
+  if [ -f "$c" ]; then BUNDLE_FILE="$c"; break; fi
+done
 
 if [ -z "$BUNDLE_FILE" ]; then
-  echo "Error: No bundle file found for platform $PLATFORM"
+  echo "Error: No bundle file found for platform $PLATFORM. Bundle tree:" >&2
+  find src-tauri/target/release/bundle -maxdepth 2 2>/dev/null | sort >&2 || true
   exit 1
 fi
 echo "Bundle: $BUNDLE_FILE"
