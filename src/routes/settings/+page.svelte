@@ -8,6 +8,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '$lib/components/ui/card';
 import { Button } from '$lib/components/ui/button';
 import { Label } from '$lib/components/ui/label';
+import { Switch } from '$lib/components/ui/switch';
 import * as Select from '$lib/components/ui/select';
 import * as Dialog from '$lib/components/ui/dialog';
 import { Separator } from '$lib/components/ui/separator';
@@ -142,6 +143,24 @@ import { Separator } from '$lib/components/ui/separator';
           <Button variant="outline" onclick={clearGamePath} disabled={!config?.game_path}>Use auto-detect</Button>
         </div>
         <p class="text-xs text-muted-foreground">Pick the folder that contains <span class="font-mono">GAMEDATA</span> — e.g. <span class="font-mono">.../No Man's Sky</span></p>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
+        <CardTitle class="text-sm">Deploy</CardTitle>
+        <CardDescription>Automatically push mods to the game folder whenever the mod store changes.</CardDescription>
+      </CardHeader>
+      <CardContent class="space-y-3">
+        <div class="flex items-center justify-between gap-3">
+          <div class="space-y-0.5">
+            <Label>Auto-deploy</Label>
+            <p class="text-xs text-muted-foreground">Deploy after adding, importing, removing, renaming, or reordering mods.</p>
+          </div>
+          {#if config}
+            <Switch checked={config.auto_deploy} onCheckedChange={(v) => config && (config.auto_deploy = !!v)} />
+          {/if}
+        </div>
       </CardContent>
     </Card>
 

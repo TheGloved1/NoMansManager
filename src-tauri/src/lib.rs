@@ -309,6 +309,8 @@ pub struct AppConfig {
     pub global_disable: bool,
     pub theme: String,
     pub font: String,
+    #[serde(default)]
+    pub auto_deploy: bool,
 }
 impl Default for AppConfig {
     fn default() -> Self {
@@ -319,6 +321,7 @@ impl Default for AppConfig {
             global_disable: false,
             theme: "default".into(),
             font: "inter".into(),
+            auto_deploy: false,
         }
     }
 }
@@ -1157,6 +1160,11 @@ fn load_config_from_store(app: &tauri::AppHandle) -> AppConfig {
                 cfg.global_disable = b;
             }
         }
+        if let Some(v) = store.get("auto_deploy") {
+            if let Ok(b) = serde_json::from_value::<bool>(v.clone()) {
+                cfg.auto_deploy = b;
+            }
+        }
         if let Some(v) = store.get("theme") {
             if let Ok(s) = serde_json::from_value::<String>(v.clone()) {
                 cfg.theme = s;
@@ -1173,6 +1181,7 @@ fn load_config_from_store(app: &tauri::AppHandle) -> AppConfig {
             || store.get("active_profile").is_some()
             || store.get("theme").is_some()
             || store.get("font").is_some()
+            || store.get("auto_deploy").is_some()
         {
             return cfg;
         }
@@ -1186,6 +1195,7 @@ fn load_config_from_store(app: &tauri::AppHandle) -> AppConfig {
                     store.set("deploy_mode", serde_json::to_value(&legacy_cfg.deploy_mode).unwrap());
                     store.set("active_profile", serde_json::to_value(&legacy_cfg.active_profile).unwrap());
                     store.set("global_disable", serde_json::to_value(legacy_cfg.global_disable).unwrap());
+                    store.set("auto_deploy", serde_json::to_value(legacy_cfg.auto_deploy).unwrap());
                     store.set("theme", serde_json::to_value(&legacy_cfg.theme).unwrap());
                     store.set("font", serde_json::to_value(&legacy_cfg.font).unwrap());
                     return legacy_cfg;
@@ -1214,6 +1224,7 @@ fn save_config_to_store(app: &tauri::AppHandle, config: &AppConfig) -> Result<()
         store.set("deploy_mode", serde_json::to_value(&config.deploy_mode).map_err(|e| e.to_string())?);
         store.set("active_profile", serde_json::to_value(&config.active_profile).map_err(|e| e.to_string())?);
         store.set("global_disable", serde_json::to_value(config.global_disable).map_err(|e| e.to_string())?);
+        store.set("auto_deploy", serde_json::to_value(config.auto_deploy).map_err(|e| e.to_string())?);
         store.set("theme", serde_json::to_value(&config.theme).map_err(|e| e.to_string())?);
         store.set("font", serde_json::to_value(&config.font).map_err(|e| e.to_string())?);
         // also keep legacy file for Python compat
@@ -1243,6 +1254,37 @@ fn load_config(app: tauri::AppHandle) -> AppConfig {
 #[tauri::command]
 fn save_config(app: tauri::AppHandle, config: AppConfig) -> Result<(), String> {
     save_config_to_store(&app, &config)
+}
+
+#[tauri::command]
+fn rename_store_mod(id: String, new_name: String) -> Result<String, String> {
+    let mods = scan_store();
+    let m = mods
+        .iter()
+        .find(|x| x.id == id)
+        .ok_or_else(|| format!("Mod {} not found in store", id))?;
+    let src = PathBuf::from(&m.source_path);
+    let safe = safe_id(&new_name);
+    let dest = if m.r#type == "pak" {
+        store_dir().join(format!("{}.pak", safe))
+    } else {
+        store_dir().join(&safe)
+    };
+    let new_id = if m.r#type == "pak" {
+        dest.file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| safe.clone())
+    } else {
+        safe.clone()
+    };
+    if new_id == id {
+        return Ok(id);
+    }
+    if dest.exists() {
+        return Err("A mod with that name already exists".into());
+    }
+    fs::rename(&src, &dest).map_err(|e| e.to_string())?;
+    Ok(new_id)
 }
 
 #[tauri::command]
@@ -1314,6 +1356,7 @@ pub fn run() {
             save_config,
             can_symlink,
             remove_store_mod,
+            rename_store_mod,
             open_folder,
             get_downloads_dir,
             saves::find_save_dirs,
@@ -1336,6 +1379,9 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(test)]
 mod migration_tests {
@@ -1373,6 +1419,7 @@ mod migration_tests {
 
     #[test]
     fn migration_copies_merges_repairs_and_cleans_up() {
+        let _env = ENV_LOCK.lock().unwrap();
         let base = std::env::temp_dir().join(format!("nmm_migtest_{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         let _guard = EnvGuard::set_fake(&base);
@@ -1465,6 +1512,86 @@ mod migration_tests {
         migrate_legacy_data_dir();
         assert!(!data.join("dev.gloved.nomodssky").exists(), "matched old dir removed");
 
+        let _ = fs::remove_dir_all(&base);
+    }
+}
+
+#[cfg(test)]
+mod rename_tests {
+    use super::*;
+
+    #[test]
+    fn rename_folder_pak_collision_and_sanitize() {
+        let _env = ENV_LOCK.lock().unwrap();
+        let base = std::env::temp_dir().join(format!("nmm_renametest_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        std::env::set_var("XDG_DATA_HOME", base.join(".local/share"));
+        let store = base.join(".local/share/nomansmanager/mods");
+
+        fs::create_dir_all(store.join("Old_Folder")).unwrap();
+        fs::write(store.join("Old_Folder/file.txt"), b"x").unwrap();
+        fs::write(store.join("OldShip.pak"), b"pak").unwrap();
+        fs::create_dir_all(store.join("Taken")).unwrap();
+        fs::write(store.join("Other.pak"), b"other").unwrap();
+
+        // folder rename, spaces become underscores via safe_id
+        let id = rename_store_mod("Old_Folder".into(), "New Cool Mod".into()).unwrap();
+        assert_eq!(id, "New_Cool_Mod");
+        assert!(store.join("New_Cool_Mod/file.txt").is_file());
+        assert!(!store.join("Old_Folder").exists());
+
+        // pak keeps its extension
+        let id2 = rename_store_mod("OldShip".into(), "NewShip".into()).unwrap();
+        assert_eq!(id2, "NewShip");
+        assert!(store.join("NewShip.pak").is_file());
+
+        // collision rejected
+        assert!(rename_store_mod("NewShip".into(), "Other".into()).is_err());
+        assert!(store.join("NewShip.pak").is_file());
+
+        // no-op rename
+        assert_eq!(
+            rename_store_mod("NewShip".into(), "NewShip".into()).unwrap(),
+            "NewShip"
+        );
+
+        std::env::remove_var("XDG_DATA_HOME");
+        let _ = fs::remove_dir_all(&base);
+    }
+}
+
+#[cfg(test)]
+mod replay_tests {
+    use super::*;
+    use crate::ENV_LOCK;
+
+    #[test]
+    fn replay_add_then_rename_betterflight() {
+        let _env = ENV_LOCK.lock().unwrap();
+        let base = std::env::temp_dir().join(format!("nmm_replay_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        std::env::set_var("XDG_DATA_HOME", base.join(".local/share"));
+        std::env::set_var("XDG_CONFIG_HOME", base.join(".config"));
+
+        let zip = "/home/gloves/Downloads/BetterFlight 1.2.0 4475 5 2026-09-15T23-03Z n0CrIxzUc.zip";
+        let res = add_mods(vec![zip.to_string()]).expect("add_mods");
+        println!("imported={:?} skipped={:?}", res.imported, res.skipped);
+        assert_eq!(res.imported.len(), 1, "zip should import");
+        let id = res.imported[0].clone();
+
+        let after_add: Vec<String> = scan_store().iter().map(|m| m.id.clone()).collect();
+        println!("store after add: {:?}", after_add);
+        assert!(after_add.contains(&id));
+
+        let new_id = rename_store_mod(id.clone(), "better flight mod".into()).expect("rename");
+        println!("renamed {} -> {}", id, new_id);
+        let after_rename: Vec<String> = scan_store().iter().map(|m| m.id.clone()).collect();
+        println!("store after rename: {:?}", after_rename);
+        assert!(after_rename.contains(&new_id), "renamed mod must still be listed");
+        assert!(!after_rename.contains(&id));
+
+        std::env::remove_var("XDG_DATA_HOME");
+        std::env::remove_var("XDG_CONFIG_HOME");
         let _ = fs::remove_dir_all(&base);
     }
 }

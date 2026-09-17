@@ -52,6 +52,8 @@ export const api = {
   saveConfig: (config: AppConfig) => invoke<void>("save_config", { config }),
   canSymlink: () => invoke<boolean>("can_symlink"),
   removeStoreMod: (id: string) => invoke<void>("remove_store_mod", { id }),
+  renameStoreMod: (id: string, newName: string) =>
+    invoke<string>("rename_store_mod", { id, newName }),
   openFolder: (path: string) => invoke<void>("open_folder", { path }),
   // --- Bases (save editing) ---
   findSaveDirs: () => invoke<string[]>("find_save_dirs"),

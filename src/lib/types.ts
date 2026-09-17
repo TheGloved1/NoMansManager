@@ -21,6 +21,7 @@ export interface AppConfig {
   global_disable: boolean;
   theme: string;
   font: string;
+  auto_deploy: boolean;
 }
 
 export interface ImportResult {

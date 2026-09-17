@@ -10,14 +10,13 @@
 
 <script lang="ts" generics="T">
   import type { Snippet } from "svelte";
+  import * as Table from "./ui/table/index.js";
   import SortHeader from "./sort-header.svelte";
   import type { SortDir } from "$lib/table-sort";
 
   interface Props {
-    /** Column definitions (header row). */
+    /** Column definitions (single shared header row — header and body can never drift). */
     columns: DataListColumn[];
-    /** Explicit grid template shared by header and rows, e.g. "auto minmax(0,1fr) auto auto". */
-    gridTemplate: string;
     items: T[];
     keyOf: (item: T) => string | number;
     isSelected: (item: T) => boolean;
@@ -35,7 +34,7 @@
       toKey: string | number,
       pos: "before" | "after",
     ) => void;
-    /** Row cells for one item. Parent owns actions (stopPropagation included). */
+    /** Table cells (<Table.Cell>) for one item. Parent owns actions. */
     row: Snippet<[item: T, selected: boolean]>;
     /** Shown when items is empty (loading / no data / no matches). */
     empty?: Snippet;
@@ -43,7 +42,6 @@
 
   let {
     columns,
-    gridTemplate,
     items,
     keyOf,
     isSelected,
@@ -71,7 +69,7 @@
 </script>
 
 <div
-  class="min-h-0 flex-1 overflow-auto"
+  class="min-h-0 flex-1 select-none overflow-auto"
   role="button"
   tabindex="0"
   onclick={(e) => {
@@ -84,36 +82,42 @@
     }
   }}
 >
-  <div class="min-w-0">
-    <div
-      class="sticky top-0 z-10 grid gap-2 border-b border-border bg-muted px-3 py-2 text-[11px] font-medium tracking-wide text-muted-foreground {gridTemplate}"
-    >
-      {#each columns as col}
-        {#if col.sortable && onSort}
-          <SortHeader
-            label={col.label}
-            active={sortKey === col.id}
-            dir={sortDir}
-            align={col.align ?? "left"}
-            onclick={() => onSort(col.id)}
-          />
-        {:else}
-          <div class={col.align === "right" ? "text-right uppercase" : "uppercase"}>{col.label}</div>
-        {/if}
-      {/each}
-    </div>
-    {#if items.length === 0}
-      {@render empty?.()}
-    {:else}
-      <div class="divide-y">
+  {#if items.length === 0}
+    {@render empty?.()}
+  {:else}
+    <table class="w-full caption-bottom text-sm">
+      <Table.Header class="sticky top-0 z-10 bg-muted">
+        <Table.Row class="border-b border-border hover:bg-transparent">
+          {#each columns as col}
+            <Table.Head
+              class="text-[11px] tracking-wide text-muted-foreground {col.align ===
+              'right'
+                ? 'text-right'
+                : ''}"
+            >
+              {#if col.sortable && onSort}
+                <SortHeader
+                  label={col.label}
+                  active={sortKey === col.id}
+                  dir={sortDir}
+                  align={col.align ?? "left"}
+                  onclick={() => onSort(col.id)}
+                />
+              {:else}
+                <span class="uppercase">{col.label}</span>
+              {/if}
+            </Table.Head>
+          {/each}
+        </Table.Row>
+      </Table.Header>
+      <Table.Body>
         {#each items as item (keyOf(item))}
           {@const selected = isSelected(item)}
           {@const draggable = isDraggable?.(item) ?? false}
           {@const isOver = dragOverKey !== null && dragOverKey === keyOf(item)}
-          <div
-            role="button"
-            tabindex="0"
-            draggable={draggable}
+          <Table.Row
+            tabindex={0}
+            {draggable}
             ondragstart={(e) => {
               if (!draggable) return;
               dragFromKey = keyOf(item);
@@ -125,9 +129,12 @@
             ondragover={(e) => {
               if (dragFromKey === null || dragFromKey === keyOf(item)) return;
               e.preventDefault();
-              const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              const r = (
+                e.currentTarget as HTMLElement
+              ).getBoundingClientRect();
               dragOverKey = keyOf(item);
-              dragOverPos = e.clientY < r.top + r.height / 2 ? "before" : "after";
+              dragOverPos =
+                e.clientY < r.top + r.height / 2 ? "before" : "after";
             }}
             ondrop={(e) => {
               e.preventDefault();
@@ -144,20 +151,21 @@
               }
             }}
             ondblclick={() => onActivate?.(item)}
-            class="relative grid cursor-pointer items-center gap-2 px-3 py-2 text-sm {gridTemplate} {selected
-              ? "bg-primary/10 hover:bg-primary/20"
-              : "hover:bg-muted/50"} {keyOf(item) === dragFromKey ? "opacity-40" : ""}"
+            title={draggable ? "Drag to reorder" : undefined}
+            class="{draggable
+              ? 'cursor-grab active:cursor-grabbing'
+              : 'cursor-pointer'} {selected
+              ? 'bg-primary/10 hover:bg-primary/20'
+              : isOver
+                ? 'bg-primary/15'
+                : 'hover:bg-muted/50'} {keyOf(item) === dragFromKey
+              ? 'opacity-40'
+              : ''}"
           >
-            {#if isOver && dragOverPos === "before"}
-              <div class="absolute inset-x-0 top-0 h-0.5 bg-primary"></div>
-            {/if}
-            {#if isOver && dragOverPos === "after"}
-              <div class="absolute inset-x-0 bottom-0 h-0.5 bg-primary"></div>
-            {/if}
             {@render row(item, selected)}
-          </div>
+          </Table.Row>
         {/each}
-      </div>
-    {/if}
-  </div>
+      </Table.Body>
+    </table>
+  {/if}
 </div>

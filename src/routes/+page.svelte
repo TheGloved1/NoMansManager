@@ -8,6 +8,8 @@
   import { Input } from "$lib/components/ui/input";
   import * as Select from "$lib/components/ui/select";
   import * as Dialog from "$lib/components/ui/dialog";
+  import * as Table from "$lib/components/ui/table";
+  import { LoaderCircle } from "lucide-svelte";
   import DataList from "$lib/components/data-list.svelte";
   import SortHeader from "$lib/components/sort-header.svelte";
   import { loadTableSort, saveTableSort, type SortDir } from "$lib/table-sort";
@@ -150,7 +152,87 @@
     const cur = profile?.enabled[mod.id] ?? true;
     if (profile) {
       profile.enabled[mod.id] = !cur;
-      api.saveProfile(profile).then(() => refreshMods());
+      api
+        .saveProfile(profile)
+        .then(() => refreshMods())
+        .then(() => maybeAutoDeploy());
+    }
+  }
+  function orderOf(mod: Mod): string {
+    if (!profile) return "–";
+    const i = profile.mod_order.indexOf(mod.id);
+    return i >= 0 ? String(i + 1) : "–";
+  }
+
+  // --- rename dialog ---
+  let renameTarget: Mod | null = $state(null);
+  let renameValue = $state("");
+  let renameInput: HTMLInputElement | null = $state(null);
+  let renameBusy = $state(false);
+  let renameUnchanged = $state(false);
+  let renameError: string | null = $state(null);
+  $effect(() => {
+    if (renameTarget && renameInput) {
+      renameInput.focus();
+      renameInput.select();
+    }
+  });
+  function openRenameDialog(mod: Mod) {
+    renameValue = mod.display_name;
+    renameUnchanged = false;
+    renameError = null;
+    renameTarget = mod;
+  }
+  async function commitRenameDialog() {
+    const mod = renameTarget;
+    if (!mod) {
+      renameError = "No mod selected — reopen the dialog and try again.";
+      return;
+    }
+    const next = (renameValue ?? "").trim();
+    if (!next) {
+      renameError = "Type a name first.";
+      return;
+    }
+    const current = mods.find((m) => m.id === mod.id);
+    if (!current) {
+      renameError = "That mod is no longer in the list — reload and try again.";
+      status = renameError;
+      return;
+    }
+    if (next === current.display_name) {
+      renameUnchanged = true;
+      return;
+    }
+    renameUnchanged = false;
+    renameError = null;
+    renameBusy = true;
+    try {
+      const newId = await api.renameStoreMod(mod.id, next);
+      if (profile) {
+        profile.mod_order = profile.mod_order.map((x) =>
+          x === mod.id ? newId : x,
+        );
+        if (mod.id in profile.enabled) {
+          profile.enabled[newId] = profile.enabled[mod.id];
+          delete profile.enabled[mod.id];
+        }
+        await api.saveProfile(profile);
+      }
+      if (lastSelected === mod.id) lastSelected = newId;
+      selectedIds = new Set(
+        [...selectedIds].map((x) => (x === mod.id ? newId : x)),
+      );
+      await refreshMods();
+      status = `Renamed to ${newId}`;
+      renameTarget = null;
+      await maybeAutoDeploy();
+    } catch (err: any) {
+      const msg = `${err}`;
+      status = msg;
+      renameError = msg;
+    } finally {
+      renameBusy = false;
     }
   }
   function handleClear() {
@@ -183,6 +265,7 @@
       await api.saveProfile(profile);
       await refreshMods();
       status = `Moved ${block.length}`;
+      await maybeAutoDeploy();
       return;
     }
     const from = profile.mod_order.indexOf(fromId);
@@ -206,6 +289,7 @@
     await refreshMods();
     selectedIds = new Set([fromId]);
     lastSelected = fromId;
+    await maybeAutoDeploy();
   }
 
   async function handleAddPaths(paths: string[]) {
@@ -221,6 +305,7 @@
       const res = await api.addMods(paths);
       if (res.imported.length) profile = await api.loadProfile(profile!.name);
       await refreshMods();
+      await maybeAutoDeploy();
       status = res.imported.length
         ? `Added ${res.imported.length}`
         : `Skipped — ${res.skipped[0] ?? ""}`;
@@ -247,6 +332,7 @@
     const r = await api.importMods(modsDir, mv);
     if (r.imported.length) profile = await api.loadProfile(profile!.name);
     await refreshMods();
+    await maybeAutoDeploy();
     status = r.imported.length
       ? `Imported ${r.imported.length}`
       : "Nothing to import";
@@ -261,6 +347,10 @@
     status = r.errors.length ? r.errors[0] : `Deployed ${r.deployed}`;
     deployedMap = await api.scanDeployed(modsDir);
     await refreshMods();
+  }
+  async function maybeAutoDeploy() {
+    if (!config?.auto_deploy || !modsDir || !profile) return;
+    await doDeploy();
   }
   async function doPurge() {
     if (!modsDir) return;
@@ -279,6 +369,7 @@
     await api.saveProfile(profile);
     selectedIds = new Set();
     await refreshMods();
+    await maybeAutoDeploy();
     showRemoveConfirm = false;
   }
 
@@ -304,14 +395,18 @@
       const mul = sortDir === "desc" ? 1 : -1;
       list.sort(
         (a, b) =>
-          mul * ((profile?.enabled[b.id] ?? true ? 1 : 0) - (profile?.enabled[a.id] ?? true ? 1 : 0)),
+          mul *
+          (((profile?.enabled[b.id] ?? true) ? 1 : 0) -
+            ((profile?.enabled[a.id] ?? true) ? 1 : 0)),
       );
     } else if (sortKey === "name") {
       const mul = sortDir === "desc" ? -1 : 1;
       list.sort((a, b) => mul * a.display_name.localeCompare(b.display_name));
     } else if (sortKey === "size") {
       list.sort((a, b) =>
-        sortDir === "desc" ? b.size_bytes - a.size_bytes : a.size_bytes - b.size_bytes,
+        sortDir === "desc"
+          ? b.size_bytes - a.size_bytes
+          : a.size_bytes - b.size_bytes,
       );
     }
     return list;
@@ -348,12 +443,13 @@
       } catch {}
     })();
     const onKey = (e: KeyboardEvent) => {
+      // Escape only deselects / closes dialogs. There are no destructive
+      // keyboard shortcuts anywhere: deletion always goes through the
+      // Remove button + confirmation dialog.
       if (e.key === "Escape") {
         if (showStartupDialog) showStartupDialog = false;
         else handleClear();
       }
-      if ((e.key === "Delete" || e.key === "Backspace") && selectedIds.size)
-        removeSelected();
     };
     window.addEventListener("keydown", onKey);
     return () => {
@@ -439,54 +535,99 @@
 
   <DataList
     columns={[
+      { id: "order", label: "Order", sortable: true },
       { id: "status", label: "Status", sortable: true },
       { id: "name", label: "Mod Name", sortable: true },
       { id: "size", label: "Size", sortable: true, align: "right" },
       { id: "actions", label: "Actions", align: "right" },
     ]}
-    gridTemplate="grid-cols-[auto_minmax(0,1fr)_auto_auto]"
     items={filtered}
     keyOf={(m) => m.id}
     isSelected={(m) => selectedIds.has(m.id)}
-    sortKey={sortKey === "manual" ? null : sortKey}
-    sortDir={sortDir}
-    onSort={(id) => setModSort(id as "status" | "name" | "size")}
+    sortKey={sortKey === "manual" ? "order" : sortKey}
+    sortDir={sortKey === "manual" ? "asc" : sortDir}
+    onSort={(id) => {
+      if (id === "order") {
+        sortKey = "manual";
+        sortDir = "asc";
+        saveTableSort(MOD_SORT_KEY, { key: sortKey, dir: sortDir });
+      } else {
+        setModSort(id as "status" | "name" | "size");
+      }
+    }}
     onSelect={(m, e) => handleSelect(m.id, e as unknown as MouseEvent)}
-    onActivate={(m) => toggleMod(m)}
     onBackgroundClear={handleClear}
     isDraggable={() => !isSorted}
     onReorder={(from, to, pos) => handleReorder(String(from), String(to), pos)}
   >
     {#snippet row(mod, isSel)}
       {@const enabled = profile?.enabled[mod.id] ?? true}
-      <div>
-        <span
-          class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium {enabled
-            ? 'bg-primary text-primary-foreground border-primary'
-            : 'bg-muted text-muted-foreground'}"
-        >
-          {enabled ? "Enabled" : "Disabled"}
-        </span>
-      </div>
-      <div class="min-w-0">
-        <div class="truncate font-medium {enabled ? '' : 'opacity-60'}" title={mod.display_name}>
-          {mod.display_name}
-        </div>
-      </div>
-      <div class="text-right font-mono text-xs text-muted-foreground">
-        {sizeStr(mod.size_bytes)}
-      </div>
-      <div class="flex justify-end">
-        <Button
-          variant="outline"
-          size="xs"
+      <Table.Cell class="font-mono text-xs text-muted-foreground">
+        {orderOf(mod)}
+      </Table.Cell>
+      <Table.Cell>
+        <button
+          type="button"
+          class="inline-flex cursor-pointer items-center rounded-full border px-2 py-0.5 text-[11px] font-medium transition {enabled
+            ? 'bg-primary text-primary-foreground border-primary hover:bg-primary/80'
+            : 'bg-muted text-muted-foreground hover:bg-muted/70'}"
+          title={enabled ? "Click to disable" : "Click to enable"}
           onclick={(e) => {
             e.stopPropagation();
-            handleSelect(mod.id, new MouseEvent("click"));
-            openRemoveConfirm();
-          }}>Remove</Button
+            toggleMod(mod);
+          }}
         >
-      </div>
+          {enabled ? "Enabled" : "Disabled"}
+        </button>
+      </Table.Cell>
+      <Table.Cell class="max-w-md">
+        <div
+          class="truncate font-medium {enabled ? '' : 'opacity-60'}"
+          role="button"
+          tabindex="0"
+          title={`${mod.display_name} — double-click to rename`}
+          onclick={(e) => {
+            e.stopPropagation();
+            handleSelect(mod.id, e);
+          }}
+          onkeydown={(e) => {
+            if (e.key === "Enter") {
+              e.stopPropagation();
+              openRenameDialog(mod);
+            }
+          }}
+          ondblclick={(e) => {
+            e.stopPropagation();
+            openRenameDialog(mod);
+          }}
+        >
+          {mod.display_name}
+        </div>
+      </Table.Cell>
+      <Table.Cell class="font-mono text-xs text-muted-foreground">
+        {sizeStr(mod.size_bytes)}
+      </Table.Cell>
+      <Table.Cell>
+        <div class="flex justify-end gap-1.5">
+          <Button
+            variant="ghost"
+            size="xs"
+            onclick={(e) => {
+              e.stopPropagation();
+              openRenameDialog(mod);
+            }}>Rename</Button
+          >
+          <Button
+            variant="outline"
+            size="xs"
+            onclick={(e) => {
+              e.stopPropagation();
+              handleSelect(mod.id, new MouseEvent("click"));
+              openRemoveConfirm();
+            }}>Remove</Button
+          >
+        </div>
+      </Table.Cell>
     {/snippet}
     {#snippet empty()}
       <div class="p-12 text-center">
@@ -524,6 +665,7 @@
             if (profile) profile.enabled[id] = true;
           if (profile) await api.saveProfile(profile);
           await refreshMods();
+          await maybeAutoDeploy();
         }}>Enable</Button
       >
       <Button
@@ -534,6 +676,7 @@
             if (profile) profile.enabled[id] = false;
           if (profile) await api.saveProfile(profile);
           await refreshMods();
+          await maybeAutoDeploy();
         }}>Disable</Button
       >
       <Button variant="destructive" size="xs" onclick={openRemoveConfirm}
@@ -571,9 +714,23 @@
         >⌕</span
       >
     </div>
-    <span class="hidden md:inline text-xs text-muted-foreground ml-auto"
+    <span class="ml-auto hidden text-xs text-muted-foreground md:inline"
       >{filtered.length} shown</span
     >
+    {#if isSorted}
+      <button
+        type="button"
+        class="shrink-0 rounded-full border border-amber-500/40 px-2 py-0.5 text-[11px] font-medium text-amber-400 transition hover:bg-amber-500/10"
+        title="Dragging is disabled while sorted — click to return to load order"
+        onclick={() => {
+          sortKey = "manual";
+          sortDir = "asc";
+          saveTableSort(MOD_SORT_KEY, { key: sortKey, dir: sortDir });
+        }}
+      >
+        Reordering disabled
+      </button>
+    {/if}
   </div>
 
   <div class="h-21.5 shrink-0 border-t bg-card p-3">
@@ -646,8 +803,59 @@
         </Dialog.Description>
       </Dialog.Header>
       <Dialog.Footer>
-        <Button variant="ghost" onclick={() => (showRemoveConfirm = false)}>Cancel</Button>
+        <Button variant="ghost" onclick={() => (showRemoveConfirm = false)}
+          >Cancel</Button
+        >
         <Button variant="destructive" onclick={removeSelected}>Remove</Button>
+      </Dialog.Footer>
+    </Dialog.Content>
+  </Dialog.Root>
+
+  <Dialog.Root
+    open={renameTarget !== null}
+    onOpenChange={(o: boolean) => {
+      if (!o) renameTarget = null;
+    }}
+  >
+    <Dialog.Content class="sm:max-w-md">
+      <Dialog.Header>
+        <Dialog.Title>Rename mod</Dialog.Title>
+        <Dialog.Description>
+          Renames <span class="font-mono"
+            >{renameTarget?.display_name ?? ""}</span
+          > in your mod store.
+        </Dialog.Description>
+      </Dialog.Header>
+      <Input
+        bind:value={renameValue}
+        bind:ref={renameInput}
+        class="font-mono text-sm"
+        placeholder="New mod name…"
+        oninput={() => (renameUnchanged = false)}
+        onkeydown={(e) => {
+          if (e.key === "Enter") commitRenameDialog();
+        }}
+      />
+      {#if renameUnchanged}
+        <p class="text-xs text-amber-400">
+          That's the current name — change it first.
+        </p>
+      {/if}
+      {#if renameError}
+        <p class="text-xs break-words text-destructive">{renameError}</p>
+      {/if}
+      <Dialog.Footer>
+        <Button variant="ghost" onclick={() => (renameTarget = null)}
+          >Cancel</Button
+        >
+        <Button
+          onclick={commitRenameDialog}
+          disabled={renameBusy || !renameValue.trim()}
+        >
+          {#if renameBusy}<LoaderCircle
+              class="size-3.5 animate-spin"
+            />Renaming…{:else}Rename{/if}
+        </Button>
       </Dialog.Footer>
     </Dialog.Content>
   </Dialog.Root>
