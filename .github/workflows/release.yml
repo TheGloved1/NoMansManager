@@ -144,18 +144,22 @@ jobs:
           fi
 
       - name: Upload bundles
+        # Collect exact paths with find: bash does not expand ** recursively,
+        # and artifact nesting varies — globs here silently match nothing.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${{ github.ref_name }}" \
-            bundles-windows-x86_64/**/*.msi \
-            bundles-linux-x86_64/**/*.deb \
-            bundles-linux-x86_64/**/*.AppImage \
-            bundles-linux-x86_64/**/*.rpm \
-            bundles-darwin-aarch64/**/*.dmg \
-            bundles-darwin-aarch64/**/*.tar.gz \
-            updater.json \
-            --clobber
+          mapfile -t FILES < <(find bundles-windows-x86_64 bundles-linux-x86_64 bundles-darwin-aarch64 -type f \( \
+            -name '*.msi' -o -name '*.deb' -o -name '*.AppImage' -o \
+            -name '*.rpm' -o -name '*.dmg' -o -name '*.tar.gz' \) | sort)
+          FILES+=(updater.json)
+          echo "Uploading ${#FILES[@]} files:"
+          printf '  %s\n' "${FILES[@]}"
+          if [ "${#FILES[@]}" -ne 7 ]; then
+            echo "Expected 7 files (6 bundles + updater.json), found ${#FILES[@]}"
+            exit 1
+          fi
+          gh release upload "${{ github.ref_name }}" "${FILES[@]}" --clobber
 
       - name: Publish release
         env:
