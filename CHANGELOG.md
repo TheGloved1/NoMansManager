@@ -1,3 +1,14 @@
+## [26.9.9] - 2026-09-17
+
+### Added
+
+- backups manager page, autobackups only on writes
+
+### Other
+
+- replace action-gh-release with gh CLI draft-upload-publish flow
+- collect upload files with find instead of globs
+
 ## [26.9.8] - 2026-09-17
 
 ### Added
