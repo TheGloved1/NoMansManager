@@ -69,6 +69,29 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
 
+      - name: Rename bundles to canonical names
+        # Tauri always embeds version+arch in bundle filenames and offers no
+        # flag to change that, so rename post-build. Signatures cover file
+        # content (computed later by generate-updater-json.sh), not names.
+        shell: bash
+        run: |
+          shopt -s nullglob
+          rename_bundle() {
+            local dir="$1" pattern="$2" name="$3"
+            for f in "$dir"/$pattern; do
+              echo "Renaming $(basename "$f") -> $name"
+              mv "$f" "$dir/$name"
+            done
+          }
+          B=src-tauri/target/release/bundle
+          rename_bundle "$B/msi" "*.msi" "NoMansManager.msi"
+          rename_bundle "$B/nsis" "*.exe" "NoMansManager.exe"
+          rename_bundle "$B/appimage" "*.AppImage" "NoMansManager.AppImage"
+          rename_bundle "$B/deb" "*.deb" "NoMansManager.deb"
+          rename_bundle "$B/rpm" "*.rpm" "NoMansManager.rpm"
+          rename_bundle "$B/dmg" "*.dmg" "NoMansManager.dmg"
+          rename_bundle "$B/macos" "*.app.tar.gz" "NoMansManager.tar.gz"
+
       - name: Generate updater fragment
         shell: bash
         env:
