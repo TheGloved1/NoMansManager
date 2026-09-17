@@ -1,3 +1,9 @@
+## [26.9.8] - 2026-09-17
+
+### Added
+
+- granular backend activity logging
+
 ## [26.9.7] - 2026-09-17
 
 ### Added
