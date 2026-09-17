@@ -126,19 +126,44 @@ jobs:
           jq --arg notes "$NOTES" '.notes = $notes' updater-tmp.json > updater.json
           rm -f updater-tmp.json
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          files: |
-            bundles-windows-x86_64/**/*.msi
-            bundles-linux-x86_64/**/*.deb
-            bundles-linux-x86_64/**/*.AppImage
-            bundles-linux-x86_64/**/*.rpm
-            bundles-darwin-aarch64/**/*.dmg
-            bundles-darwin-aarch64/**/*.tar.gz
-            updater.json
-          body_path: changelogs/${{ github.ref_name }}.md
-          generate_release_notes: true
-          draft: false
-          prerelease: ${{ contains(github.ref_name, '-beta.') }}
+      - name: Create draft release
+        # Draft-first flow per GitHub docs: create (or reuse) the draft,
+        # upload assets, then publish. Avoids the flaky all-in-one upload
+        # actions on large bundles (e.g. the ~86MB AppImage).
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NOTES_FILE="changelogs/${{ github.ref_name }}.md"
+          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            echo "Release ${{ github.ref_name }} already exists, reusing it"
+          else
+            ARGS=(--draft --generate-notes)
+            if [[ "${{ github.ref_name }}" == *"-beta."* ]]; then ARGS+=(--prerelease); fi
+            if [ -f "$NOTES_FILE" ]; then ARGS+=(--notes-file "$NOTES_FILE"); fi
+            gh release create "${{ github.ref_name }}" "${ARGS[@]}"
+          fi
+
+      - name: Upload bundles
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            bundles-windows-x86_64/**/*.msi \
+            bundles-linux-x86_64/**/*.deb \
+            bundles-linux-x86_64/**/*.AppImage \
+            bundles-linux-x86_64/**/*.rpm \
+            bundles-darwin-aarch64/**/*.dmg \
+            bundles-darwin-aarch64/**/*.tar.gz \
+            updater.json \
+            --clobber
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NOTES_FILE="changelogs/${{ github.ref_name }}.md"
+          if [ -f "$NOTES_FILE" ]; then
+            gh release edit "${{ github.ref_name }}" --notes-file "$NOTES_FILE" --draft=false
+          else
+            gh release edit "${{ github.ref_name }}" --draft=false
+          fi
