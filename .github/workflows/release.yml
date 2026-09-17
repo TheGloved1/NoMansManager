@@ -185,9 +185,26 @@ jobs:
             echo "Expected 7 files (6 bundles + updater.json), found ${#FILES[@]}"
             exit 1
           fi
+          # One file at a time with retries: GitHub asset uploads are
+          # intermittently slow/stalled (large files especially), so a single
+          # hung stream must fail loudly and retry instead of hanging silent.
+          ATTEMPTS=3
           for f in "${FILES[@]}"; do
-            echo "Uploading $f ..."
-            timeout 10m gh release upload "${{ github.ref_name }}" "$f" --clobber
+            attempt=1
+            while true; do
+              echo "Uploading $f (attempt $attempt/$ATTEMPTS) ..."
+              if timeout 30s gh release upload "${{ github.ref_name }}" "$f" --clobber; then
+                break
+              fi
+              if [ "$attempt" -ge "$ATTEMPTS" ]; then
+                echo "FAILED $f after $ATTEMPTS attempts"
+                exit 1
+              fi
+              wait_secs=$((attempt * 30))
+              echo "Retrying $f in ${wait_secs}s ..."
+              sleep "$wait_secs"
+              attempt=$((attempt + 1))
+            done
           done
 
       - name: Publish release
