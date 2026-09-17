@@ -64,7 +64,6 @@ export interface TypeCounts {
 export interface DecompressResult {
   bases: BaseSummary[];
   counts: TypeCounts;
-  backup_path: string;
 }
 
 export interface ExportResult {
@@ -81,6 +80,16 @@ export interface BaseImportResult {
 export interface BackupInfo {
   name: string;
   size_display: string;
+  modified: string;
+  path: string;
+}
+
+export interface ManagedBackup {
+  name: string;
+  kind: string;
+  size_display: string;
+  size_bytes: number;
+  modified_ms: number;
   modified: string;
   path: string;
 }

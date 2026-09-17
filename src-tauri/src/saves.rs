@@ -52,10 +52,6 @@ fn backups_bases_dir() -> PathBuf {
     saves_root().join("backups").join("bases")
 }
 
-fn backups_decompressed_dir() -> PathBuf {
-    saves_root().join("backups").join("decompressed files")
-}
-
 fn output_bases_dir() -> PathBuf {
     saves_root().join("output").join("bases")
 }
@@ -775,7 +771,6 @@ pub(crate) fn list_save_subdirs(save_dir: String) -> Vec<String> {
 pub(crate) struct DecompressResult {
     pub bases: Vec<BaseSummary>,
     pub counts: TypeCounts,
-    pub backup_path: String,
 }
 
 #[tauri::command]
@@ -791,24 +786,8 @@ pub(crate) fn decompress_save(
     let data = fs::read(&full).map_err(|e| format!("read {}: {}", full.display(), e))?;
     dlog(&app, "info", "bases", format!("reading {} ({} KB)", save_file, data.len() / 1024));
 
-    // backup original .hg (mirror Python behaviour)
-    fs::create_dir_all(backups_save_dir()).map_err(|e| e.to_string())?;
-    let backup_path = backups_save_dir().join(format!(
-        "{}_backup_{}.hg",
-        Path::new(&save_file)
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "save".to_string()),
-        timestamp()
-    ));
-    fs::copy(&full, &backup_path).map_err(|e| format!("backup: {}", e))?;
-    dlog(
-        &app,
-        "info",
-        "bases",
-        format!("backed up original → {}", backup_path.file_name().unwrap_or_default().to_string_lossy()),
-    );
-
+    // NOTE: no backup here — loading is read-only. Every path that writes a
+    // live file (overwrite, restore) snapshots it first.
     let raw = decompress_hg(&data)?;
     dlog(&app, "info", "bases", format!("decompressed to {} KB JSON", raw.len() / 1024));
     let text = String::from_utf8(raw).map_err(|e| format!("save is not utf-8: {}", e))?;
@@ -823,15 +802,6 @@ pub(crate) fn decompress_save(
         format!("key mapping: {} entries ({})", mapping.len(), mapping_source),
     );
     json = map_keys(&json, &mapping);
-
-    // stash decompressed backup
-    fs::create_dir_all(backups_decompressed_dir()).map_err(|e| e.to_string())?;
-    let decomp_path =
-        backups_decompressed_dir().join(format!("{} - decompressed.json", save_file));
-    let _ = fs::write(
-        &decomp_path,
-        serde_json::to_string_pretty(&json).unwrap_or_default(),
-    );
 
     let bases = summarize_bases(&json)?;
     let counts = count_types(&bases);
@@ -853,11 +823,7 @@ pub(crate) fn decompress_save(
     st.save_file = Some(save_file);
     st.save_json = Some(json);
 
-    Ok(DecompressResult {
-        bases,
-        counts,
-        backup_path: backup_path.to_string_lossy().to_string(),
-    })
+    Ok(DecompressResult { bases, counts })
 }
 
 #[tauri::command]
@@ -1383,6 +1349,112 @@ pub(crate) fn list_backups(stem: Option<String>) -> Vec<BackupInfo> {
     out
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ManagedBackup {
+    pub name: String,
+    /// "save" (.hg) or "base" (.json/.nmsbase)
+    pub kind: String,
+    pub size_display: String,
+    pub size_bytes: u64,
+    pub modified_ms: i64,
+    pub modified: String,
+    pub path: String,
+}
+
+fn backup_file_meta(p: &Path) -> Option<(u64, i64, String)> {
+    let m = p.metadata().ok()?;
+    let ms = m
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok().map(|d| d.as_millis() as i64))
+        .unwrap_or(0);
+    let disp = m
+        .modified()
+        .ok()
+        .map(|t| {
+            chrono::DateTime::<Local>::from(t)
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string()
+        })
+        .unwrap_or_else(|| "?".to_string());
+    Some((m.len(), ms, disp))
+}
+
+/// Every managed backup: save .hg files plus base .json/.nmsbase files,
+/// newest first. Output/ exports are working files, not backups.
+#[tauri::command]
+pub(crate) fn list_all_backups() -> Vec<ManagedBackup> {
+    let mut out = Vec::new();
+    let roots = [
+        (backups_save_dir(), "save", &["hg"] as &[&str]),
+        (backups_bases_dir(), "base", &["json", "nmsbase"]),
+    ];
+    for (dir, kind, exts) in roots {
+        let entries = match fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for p in entries.filter_map(|e| e.ok().map(|x| x.path())) {
+            if !p.is_file() {
+                continue;
+            }
+            let ext_ok = p
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| exts.contains(&e.to_lowercase().as_str()))
+                .unwrap_or(false);
+            if !ext_ok {
+                continue;
+            }
+            if let Some((sz, ms, modified)) = backup_file_meta(&p) {
+                out.push(ManagedBackup {
+                    name: p.file_name().unwrap_or_default().to_string_lossy().to_string(),
+                    kind: kind.to_string(),
+                    size_display: size_display(sz),
+                    size_bytes: sz,
+                    modified_ms: ms,
+                    modified,
+                    path: p.to_string_lossy().to_string(),
+                });
+            }
+        }
+    }
+    out.sort_by(|a, b| b.modified_ms.cmp(&a.modified_ms));
+    out
+}
+
+/// Delete one managed backup. The path must resolve inside the backups
+/// root — anything else is rejected.
+#[tauri::command]
+pub(crate) fn delete_backup(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    use crate::logs::dlog;
+    let root = saves_root().join("backups");
+    let name = delete_managed_backup(&root, &path)?;
+    dlog(&app, "info", "bases", format!("deleted backup '{name}'"));
+    Ok(())
+}
+
+fn delete_managed_backup(root: &Path, path: &str) -> Result<String, String> {
+    let target = PathBuf::from(shellexpand(path));
+    let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    let canonical_target = target
+        .canonicalize()
+        .map_err(|_| "backup not found".to_string())?;
+    if !canonical_target.starts_with(&canonical_root) {
+        return Err("refusing to delete outside the backups folder".to_string());
+    }
+    if !canonical_target.is_file() {
+        return Err("not a file".to_string());
+    }
+    let name = canonical_target
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    fs::remove_file(&canonical_target).map_err(|e| e.to_string())?;
+    Ok(name)
+}
+
 #[tauri::command]
 pub(crate) fn restore_save(
     app: tauri::AppHandle,
@@ -1493,5 +1565,44 @@ mod live_save_tests {
             serde_json::to_string_pretty(&mapped).expect("pretty"),
         )
         .expect("write dump");
+    }
+}
+
+#[cfg(test)]
+mod backup_manager_tests {
+    use super::*;
+
+    #[test]
+    fn delete_guard_rejects_escapes_and_deletes_own() {
+        let base = std::env::temp_dir().join(format!("nmm_deltest_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let root = base.join("backups");
+        fs::create_dir_all(root.join("save files")).unwrap();
+        let own = root.join("save files/save_backup_20260101.hg");
+        fs::write(&own, b"data").unwrap();
+        let outside = base.join("evil.hg");
+        fs::write(&outside, b"evil").unwrap();
+
+        // outside the root: rejected, file untouched
+        assert!(delete_managed_backup(&root, outside.to_str().unwrap()).is_err());
+        assert!(outside.is_file());
+        // missing file: clean error
+        assert!(delete_managed_backup(&root, root.join("nope.hg").to_str().unwrap()).is_err());
+        // own file: deleted
+        assert_eq!(
+            delete_managed_backup(&root, own.to_str().unwrap()).unwrap(),
+            "save_backup_20260101.hg"
+        );
+        assert!(!own.exists());
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn list_all_backups_finds_both_kinds() {
+        // exercises the real listing against a fake root is not possible
+        // (paths are fixed); at minimum the live call must not error
+        let all = super::list_all_backups();
+        assert!(all.iter().all(|b| b.kind == "save" || b.kind == "base"));
     }
 }

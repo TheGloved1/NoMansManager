@@ -1448,6 +1448,8 @@ pub fn run() {
             saves::recompress_save,
             saves::backup_saves,
             saves::list_backups,
+            saves::list_all_backups,
+            saves::delete_backup,
             saves::restore_save,
             logs::append_log,
             logs::read_logs,

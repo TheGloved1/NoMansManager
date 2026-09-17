@@ -8,6 +8,7 @@ import type {
   DeployResult,
   ExportResult,
   ImportResult,
+  ManagedBackup,
   Mod,
   Profile,
   SaveFileInfo,
@@ -19,6 +20,7 @@ export type {
   BaseSummary,
   DecompressResult,
   ExportResult,
+  ManagedBackup,
   SaveFileInfo,
 } from "./types";
 
@@ -247,6 +249,17 @@ export const api = {
       "List backups",
       (res: BackupInfo[]) => `${res.length} found`,
       () => invoke<BackupInfo[]>("list_backups", { stem }),
+    ),
+  listAllBackups: () =>
+    logged(
+      "bases",
+      "List all backups",
+      (res: ManagedBackup[]) => `${res.length} found`,
+      () => invoke<ManagedBackup[]>("list_all_backups"),
+    ),
+  deleteBackup: (path: string) =>
+    logged("bases", `Delete backup '${path.split("/").slice(-1)[0]}'`, undefined, () =>
+      invoke<void>("delete_backup", { path }),
     ),
   restoreSave: (backupPath: string, saveDir: string, saveFile: string) =>
     logged("bases", `Restore '${saveFile}'`, undefined, () =>

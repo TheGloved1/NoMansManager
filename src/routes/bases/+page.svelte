@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { goto } from "$app/navigation";
   import { open, save } from "@tauri-apps/plugin-dialog";
   import { api } from "$lib/api";
   import type {
-    BackupInfo,
     BaseSummary,
     SaveFileInfo,
     TypeCounts,
@@ -30,15 +30,14 @@
     CircleCheck,
     Copy,
     Database,
+    DatabaseBackup,
     Download,
     Eye,
     FileBraces,
     FileBracesCorner,
     FolderOpen,
-    HardDriveDownload,
     Info,
     LoaderCircle,
-    Save,
     Search,
     Settings,
     Upload,
@@ -146,9 +145,6 @@
     }
     return { error: "Unrecognized format" };
   }
-  let restoring = $state(false);
-  let backups: BackupInfo[] = $state([]);
-  let selectedBackup: string | null = $state(null);
   let recompressMode: "output" | "overwrite" | null = $state(null);
   let settingsOpen = $state(false);
   async function copyText(t: string): Promise<boolean> {
@@ -365,7 +361,7 @@
       counts = res.counts;
       selectedBase = null;
       toastOk(
-        `Loaded ${selectedSave}: ${bases.length} bases · backup ${res.backup_path.split("/").pop()}`,
+        `Loaded ${selectedSave}: ${bases.length} bases`,
       );
     } catch (e) {
       toastErr(`Load failed: ${e}`);
@@ -564,50 +560,12 @@
     }
   }
 
-  async function doBackup() {
-    if (!saveDir) return toastErr("No save dir");
-    try {
-      const paths = await api.backupSaves(saveDir);
-      toastOk(`Backed up ${paths.length} save file(s)`);
-    } catch (e) {
-      toastErr(`Backup failed: ${e}`);
-    }
-  }
-
-  async function openRestore() {
-    const stem = selectedSave?.replace(/\.hg$/, "") ?? null;
-    try {
-      backups = await api.listBackups(stem);
-    } catch {
-      backups = await api.listBackups(null);
-    }
-    if (!backups.length) return toastErr("No backups found");
-    selectedBackup = backups[0].path;
-    restoring = true;
-  }
-
-  async function doRestore() {
-    if (!selectedBackup || !saveDir || !selectedSave) return;
-    try {
-      await api.restoreSave(selectedBackup, saveDir, selectedSave);
-      restoring = false;
-      bases = [];
-      selectedBase = null;
-      counts = null;
-      await refreshSaves();
-      toastOk(`Restored '${selectedSave}' — press Load to inspect`);
-    } catch (e) {
-      toastErr(`Restore failed: ${e}`);
-    }
-  }
-
   function onKey(e: KeyboardEvent) {
     const t = e.target as HTMLElement;
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
     if (
       viewing ||
       importing ||
-      restoring ||
       recompressMode ||
       settingsOpen ||
       exportOpen
@@ -695,18 +653,10 @@
     <Button
       size="sm"
       variant="outline"
-      onclick={doBackup}
-      title="Back up all save files"
+      onclick={() => goto("/backups")}
+      title="Manage backups — restore, delete, back up now"
     >
-      <Save class="size-3.5" />Backup
-    </Button>
-    <Button
-      size="sm"
-      variant="outline"
-      onclick={openRestore}
-      title="Restore from backup…"
-    >
-      <HardDriveDownload class="size-3.5" />Restore…
+      <DatabaseBackup class="size-3.5" />Backups…
     </Button>
     <div class="mx-1 h-6 w-px bg-border"></div>
     <Button
@@ -1153,52 +1103,6 @@
               class="size-3.5 animate-spin"
             />Injecting…{:else}Inject{/if}
         </Button>
-      </Dialog.Footer>
-    </Dialog.Content>
-  </Dialog.Root>
-
-  <!-- restore dialog -->
-  <Dialog.Root bind:open={restoring}>
-    <Dialog.Content class="max-h-[85vh] max-w-2xl overflow-hidden">
-      <Dialog.Header>
-        <Dialog.Title>Restore '{selectedSave}'</Dialog.Title>
-        <Dialog.Description>
-          The current live file is backed up again before restoring. Close NMS
-          first!
-        </Dialog.Description>
-      </Dialog.Header>
-      <div class="max-h-[50vh] overflow-auto rounded-md border border-border">
-        <Table.Root>
-          <Table.Header>
-            <Table.Row>
-              <Table.Head>Backup file</Table.Head>
-              <Table.Head class="w-20">Size</Table.Head>
-              <Table.Head class="w-36">Modified</Table.Head>
-            </Table.Row>
-          </Table.Header>
-          <Table.Body>
-            {#each backups as bk}
-              <Table.Row
-                class="cursor-pointer {bk.path === selectedBackup
-                  ? 'bg-primary/10 hover:bg-primary/15'
-                  : ''}"
-                onclick={() => (selectedBackup = bk.path)}
-              >
-                <Table.Cell class="font-mono text-xs">{bk.name}</Table.Cell>
-                <Table.Cell>{bk.size_display}</Table.Cell>
-                <Table.Cell class="font-mono text-xs">{bk.modified}</Table.Cell>
-              </Table.Row>
-            {/each}
-          </Table.Body>
-        </Table.Root>
-      </div>
-      <Dialog.Footer>
-        <Button variant="outline" onclick={() => (restoring = false)}
-          >Cancel</Button
-        >
-        <Button variant="destructive" onclick={doRestore}
-          >Restore selected</Button
-        >
       </Dialog.Footer>
     </Dialog.Content>
   </Dialog.Root>
