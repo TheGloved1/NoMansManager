@@ -10,7 +10,7 @@ const DEFAULTS: AppConfig = {
   global_disable: false,
   theme: 'default',
   font: 'inter',
-  auto_deploy: false,
+  auto_deploy: true,
 };
 
 export async function loadConfigNative(): Promise<AppConfig> {

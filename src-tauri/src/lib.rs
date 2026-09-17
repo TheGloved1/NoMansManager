@@ -309,8 +309,11 @@ pub struct AppConfig {
     pub global_disable: bool,
     pub theme: String,
     pub font: String,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub auto_deploy: bool,
+}
+fn default_true() -> bool {
+    true
 }
 impl Default for AppConfig {
     fn default() -> Self {
@@ -321,7 +324,7 @@ impl Default for AppConfig {
             global_disable: false,
             theme: "default".into(),
             font: "inter".into(),
-            auto_deploy: false,
+            auto_deploy: true,
         }
     }
 }
