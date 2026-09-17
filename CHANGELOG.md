@@ -1,3 +1,11 @@
+## [26.9.11] - 2026-09-17
+
+### Other
+
+- canonical NoMansManager bundle filenames
+- resolve updater bundles by exact path, loud on missing
+- per-file uploads with timeouts
+
 ## [26.9.10] - 2026-09-17
 
 ### Added
