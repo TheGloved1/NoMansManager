@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 mod saves;
+mod logs;
 
 // --- App dirs (renamed nms-mod-manager -> nomansmanager; first run migrates) ---
 const LEGACY_DATA_DIR_NAME: &str = "nms-mod-manager";
@@ -736,7 +737,11 @@ fn scan_store() -> Vec<Mod> {
 }
 
 #[tauri::command]
-fn import_mods(mods_dir: String, do_move: Option<bool>) -> Result<ImportResult, String> {
+fn import_mods(
+    app: tauri::AppHandle,
+    mods_dir: String,
+    do_move: Option<bool>,
+) -> Result<ImportResult, String> {
     ensure_dirs();
     let store = store_dir();
     fs::create_dir_all(&store).map_err(|e| e.to_string())?;
@@ -789,11 +794,28 @@ fn import_mods(mods_dir: String, do_move: Option<bool>) -> Result<ImportResult, 
             Err(e) => skipped.push(format!("{}: failed {}", name, e)),
         }
     }
+    for name in &imported {
+        crate::logs::dlog(&app, "info", "mods", format!("imported '{name}'"));
+    }
+    for s in &skipped {
+        crate::logs::dlog(&app, "warn", "mods", format!("import skipped — {s}"));
+    }
     Ok(ImportResult { imported, skipped })
 }
 
 #[tauri::command]
-fn add_mods(paths: Vec<String>) -> Result<ImportResult, String> {
+fn add_mods(app: tauri::AppHandle, paths: Vec<String>) -> Result<ImportResult, String> {
+    let res = add_mods_inner(paths)?;
+    for name in &res.imported {
+        crate::logs::dlog(&app, "info", "mods", format!("added '{name}' to store"));
+    }
+    for s in &res.skipped {
+        crate::logs::dlog(&app, "warn", "mods", format!("add skipped — {s}"));
+    }
+    Ok(res)
+}
+
+fn add_mods_inner(paths: Vec<String>) -> Result<ImportResult, String> {
     ensure_dirs();
     let store = store_dir();
     fs::create_dir_all(&store).map_err(|e| e.to_string())?;
@@ -997,7 +1019,12 @@ fn scan_deployed(mods_dir: String) -> HashMap<String, String> {
 }
 
 #[tauri::command]
-fn deploy_mods(mods_dir: String, ordered_ids: Vec<String>, deploy_mode: Option<String>) -> Result<DeployResult, String> {
+fn deploy_mods(
+    app: tauri::AppHandle,
+    mods_dir: String,
+    ordered_ids: Vec<String>,
+    deploy_mode: Option<String>,
+) -> Result<DeployResult, String> {
     let mods_path = PathBuf::from(shellexpand(&mods_dir));
     fs::create_dir_all(&mods_path).map_err(|e| e.to_string())?;
     let mode = deploy_mode.unwrap_or_else(|| "auto".into());
@@ -1037,11 +1064,17 @@ fn deploy_mods(mods_dir: String, ordered_ids: Vec<String>, deploy_mode: Option<S
         } else {
             format!("{}{}", prefix, mid)
         };
-        let dest = mods_path.join(deployed_name);
+        let dest = mods_path.join(&deployed_name);
         match deploy_entry(&src, &dest, &mode) {
-            Ok(_) => deployed += 1,
+            Ok(how) => {
+                deployed += 1;
+                crate::logs::dlog(&app, "info", "mods", format!("deployed '{deployed_name}' via {how}"));
+            }
             Err(e) => errors.push(format!("{}: {}", mid, e)),
         }
+    }
+    for e in &errors {
+        crate::logs::dlog(&app, "warn", "mods", format!("deploy issue — {e}"));
     }
     Ok(DeployResult { deployed, errors })
 }
@@ -1053,7 +1086,11 @@ fn global_disable_enabled(mods_dir: String) -> bool {
 }
 
 #[tauri::command]
-fn set_global_disable(mods_dir: String, disable: bool) -> Result<(), String> {
+fn set_global_disable(
+    app: tauri::AppHandle,
+    mods_dir: String,
+    disable: bool,
+) -> Result<(), String> {
     let mods_path = PathBuf::from(shellexpand(&mods_dir));
     fs::create_dir_all(&mods_path).map_err(|e| e.to_string())?;
     let flag = mods_path.join("DISABLEMODS.txt");
@@ -1064,6 +1101,12 @@ fn set_global_disable(mods_dir: String, disable: bool) -> Result<(), String> {
         let _ = fs::remove_file(&flag);
         let _ = fs::remove_file(&pc_flag);
     }
+    crate::logs::dlog(
+        &app,
+        "info",
+        "mods",
+        if disable { "disabled all mods (DISABLEMODS.txt)".into() } else { "re-enabled mods".into() },
+    );
     Ok(())
 }
 
@@ -1097,12 +1140,16 @@ fn save_profile(profile: Profile) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn create_profile(name: String, clone_from: Option<String>) -> Result<Profile, String> {
+fn create_profile(
+    app: tauri::AppHandle,
+    name: String,
+    clone_from: Option<String>,
+) -> Result<Profile, String> {
     if profiles_dir().join(format!("{}.json", name)).exists() {
         return Err(format!("Profile {} already exists", name));
     }
-    let prof = if let Some(src) = clone_from {
-        let mut p = load_profile_inner(&src);
+    let prof = if let Some(src) = &clone_from {
+        let mut p = load_profile_inner(src);
         p.name = name.clone();
         p
     } else {
@@ -1113,21 +1160,31 @@ fn create_profile(name: String, clone_from: Option<String>) -> Result<Profile, S
         Profile { name: name.clone(), mod_order: order, enabled }
     };
     save_profile_inner(&prof)?;
+    crate::logs::dlog(
+        &app,
+        "info",
+        "mods",
+        match &clone_from {
+            Some(src) => format!("created profile '{name}' (cloned from '{src}')"),
+            None => format!("created profile '{name}'"),
+        },
+    );
     Ok(prof)
 }
 
 #[tauri::command]
-fn delete_profile(name: String) -> Result<(), String> {
+fn delete_profile(app: tauri::AppHandle, name: String) -> Result<(), String> {
     let p = profiles_dir().join(format!("{}.json", name));
     if p.exists() { fs::remove_file(p).map_err(|e| e.to_string())?; }
     if list_profiles().is_empty() {
-        let _ = create_profile("default".into(), None);
+        let _ = create_profile(app.clone(), "default".into(), None);
     }
+    crate::logs::dlog(&app, "info", "mods", format!("deleted profile '{name}'"));
     Ok(())
 }
 
 #[tauri::command]
-fn rename_profile(old: String, new: String) -> Result<(), String> {
+fn rename_profile(app: tauri::AppHandle, old: String, new: String) -> Result<(), String> {
     if old == new { return Ok(()); }
     let src = profiles_dir().join(format!("{}.json", old));
     let dst = profiles_dir().join(format!("{}.json", new));
@@ -1137,6 +1194,7 @@ fn rename_profile(old: String, new: String) -> Result<(), String> {
     prof.name = new.clone();
     save_profile_inner(&prof)?;
     fs::remove_file(src).map_err(|e| e.to_string())?;
+    crate::logs::dlog(&app, "info", "mods", format!("renamed profile '{old}' → '{new}'"));
     Ok(())
 }
 
@@ -1260,7 +1318,17 @@ fn save_config(app: tauri::AppHandle, config: AppConfig) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn rename_store_mod(id: String, new_name: String) -> Result<String, String> {
+fn rename_store_mod(
+    app: tauri::AppHandle,
+    id: String,
+    new_name: String,
+) -> Result<String, String> {
+    let new_id = rename_store_mod_inner(&id, &new_name)?;
+    crate::logs::dlog(&app, "info", "mods", format!("renamed mod '{id}' → '{new_id}'"));
+    Ok(new_id)
+}
+
+fn rename_store_mod_inner(id: &str, new_name: &str) -> Result<String, String> {
     let mods = scan_store();
     let m = mods
         .iter()
@@ -1281,7 +1349,7 @@ fn rename_store_mod(id: String, new_name: String) -> Result<String, String> {
         safe.clone()
     };
     if new_id == id {
-        return Ok(id);
+        return Ok(id.to_string());
     }
     if dest.exists() {
         return Err("A mod with that name already exists".into());
@@ -1291,23 +1359,26 @@ fn rename_store_mod(id: String, new_name: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn remove_store_mod(id: String) -> Result<(), String> {
+fn remove_store_mod(app: tauri::AppHandle, id: String) -> Result<(), String> {
     // Find mod by id
     let mods = scan_store();
     if let Some(m) = mods.iter().find(|x| x.id == id) {
         let p = PathBuf::from(&m.source_path);
         remove_deployed(&p)?;
+        crate::logs::dlog(&app, "info", "mods", format!("removed mod '{id}' from store"));
         return Ok(());
     }
     // fallback: try store_dir directly
     let p = store_dir().join(&id);
     if p.exists() {
         remove_deployed(&p)?;
+        crate::logs::dlog(&app, "info", "mods", format!("removed mod '{id}' from store"));
         return Ok(());
     }
     let p2 = store_dir().join(format!("{}.pak", id));
     if p2.exists() {
         remove_deployed(&p2)?;
+        crate::logs::dlog(&app, "info", "mods", format!("removed mod '{id}' from store"));
         return Ok(());
     }
     Err(format!("Mod {} not found in store", id))
@@ -1377,7 +1448,11 @@ pub fn run() {
             saves::recompress_save,
             saves::backup_saves,
             saves::list_backups,
-            saves::restore_save
+            saves::restore_save,
+            logs::append_log,
+            logs::read_logs,
+            logs::clear_logs,
+            logs::get_logs_dir
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -1538,23 +1613,23 @@ mod rename_tests {
         fs::write(store.join("Other.pak"), b"other").unwrap();
 
         // folder rename, spaces become underscores via safe_id
-        let id = rename_store_mod("Old_Folder".into(), "New Cool Mod".into()).unwrap();
+        let id = rename_store_mod_inner("Old_Folder", "New Cool Mod").unwrap();
         assert_eq!(id, "New_Cool_Mod");
         assert!(store.join("New_Cool_Mod/file.txt").is_file());
         assert!(!store.join("Old_Folder").exists());
 
         // pak keeps its extension
-        let id2 = rename_store_mod("OldShip".into(), "NewShip".into()).unwrap();
+        let id2 = rename_store_mod_inner("OldShip", "NewShip").unwrap();
         assert_eq!(id2, "NewShip");
         assert!(store.join("NewShip.pak").is_file());
 
         // collision rejected
-        assert!(rename_store_mod("NewShip".into(), "Other".into()).is_err());
+        assert!(rename_store_mod_inner("NewShip", "Other").is_err());
         assert!(store.join("NewShip.pak").is_file());
 
         // no-op rename
         assert_eq!(
-            rename_store_mod("NewShip".into(), "NewShip".into()).unwrap(),
+            rename_store_mod_inner("NewShip", "NewShip").unwrap(),
             "NewShip"
         );
 
@@ -1577,7 +1652,7 @@ mod replay_tests {
         std::env::set_var("XDG_CONFIG_HOME", base.join(".config"));
 
         let zip = "/home/gloves/Downloads/BetterFlight 1.2.0 4475 5 2026-09-15T23-03Z n0CrIxzUc.zip";
-        let res = add_mods(vec![zip.to_string()]).expect("add_mods");
+        let res = add_mods_inner(vec![zip.to_string()]).expect("add_mods");
         println!("imported={:?} skipped={:?}", res.imported, res.skipped);
         assert_eq!(res.imported.len(), 1, "zip should import");
         let id = res.imported[0].clone();
@@ -1586,7 +1661,7 @@ mod replay_tests {
         println!("store after add: {:?}", after_add);
         assert!(after_add.contains(&id));
 
-        let new_id = rename_store_mod(id.clone(), "better flight mod".into()).expect("rename");
+        let new_id = rename_store_mod_inner(&id, "better flight mod").expect("rename");
         println!("renamed {} -> {}", id, new_id);
         let after_rename: Vec<String> = scan_store().iter().map(|m| m.id.clone()).collect();
         println!("store after rename: {:?}", after_rename);

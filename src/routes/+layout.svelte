@@ -93,6 +93,10 @@
         <span class="text-sm leading-none shrink-0">🛰</span>
         {#if !collapsed}<span>Bases</span>{/if}
       </a>
+      <a href="/logs" title="Logs" class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition {isActive('/logs') ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'} {collapsed ? 'justify-center px-1' : ''}">
+        <span class="text-sm leading-none shrink-0">📋</span>
+        {#if !collapsed}<span>Logs</span>{/if}
+      </a>
       <a href="/settings" title="Settings" class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition {isActive('/settings') ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'} {collapsed ? 'justify-center px-1' : ''}">
         <span class="text-sm leading-none">⚙</span>
         {#if !collapsed}<span>Settings</span>{/if}

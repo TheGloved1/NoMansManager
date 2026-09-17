@@ -353,11 +353,11 @@ fn load_stale_cache(cache: &Path) -> Option<Vec<MappingEntry>> {
     load_mapping_from_value(&v).ok().filter(|m| !m.is_empty())
 }
 
-fn fetch_mapping() -> Result<Vec<MappingEntry>, String> {
+fn fetch_mapping() -> Result<(Vec<MappingEntry>, &'static str), String> {
     let cache = mapping_cache_path();
     if cache_valid(&cache) {
         if let Some(m) = load_stale_cache(&cache) {
-            return Ok(m);
+            return Ok((m, "cached"));
         }
     }
     let text = match reqwest::blocking::get(MAPPING_URL) {
@@ -365,7 +365,7 @@ fn fetch_mapping() -> Result<Vec<MappingEntry>, String> {
         Err(e) => {
             // offline fallback: stale cache even if expired
             if let Some(m) = load_stale_cache(&cache) {
-                return Ok(m);
+                return Ok((m, "stale cache"));
             }
             return Err(format!("download mapping: {}", e));
         }
@@ -385,7 +385,7 @@ fn fetch_mapping() -> Result<Vec<MappingEntry>, String> {
         &cache,
         serde_json::to_string_pretty(&cached).unwrap_or_default(),
     );
-    Ok(mapping)
+    Ok((mapping, "downloaded"))
 }
 
 fn map_value(v: &serde_json::Value, lookup: &HashMap<&str, &str>) -> serde_json::Value {
@@ -780,13 +780,16 @@ pub(crate) struct DecompressResult {
 
 #[tauri::command]
 pub(crate) fn decompress_save(
+    app: tauri::AppHandle,
     state: tauri::State<Mutex<SaveState>>,
     save_dir: String,
     save_file: String,
 ) -> Result<DecompressResult, String> {
+    use crate::logs::dlog;
     let dir = PathBuf::from(shellexpand(&save_dir));
     let full = dir.join(&save_file);
     let data = fs::read(&full).map_err(|e| format!("read {}: {}", full.display(), e))?;
+    dlog(&app, "info", "bases", format!("reading {} ({} KB)", save_file, data.len() / 1024));
 
     // backup original .hg (mirror Python behaviour)
     fs::create_dir_all(backups_save_dir()).map_err(|e| e.to_string())?;
@@ -799,13 +802,26 @@ pub(crate) fn decompress_save(
         timestamp()
     ));
     fs::copy(&full, &backup_path).map_err(|e| format!("backup: {}", e))?;
+    dlog(
+        &app,
+        "info",
+        "bases",
+        format!("backed up original → {}", backup_path.file_name().unwrap_or_default().to_string_lossy()),
+    );
 
     let raw = decompress_hg(&data)?;
+    dlog(&app, "info", "bases", format!("decompressed to {} KB JSON", raw.len() / 1024));
     let text = String::from_utf8(raw).map_err(|e| format!("save is not utf-8: {}", e))?;
     let mut json: serde_json::Value = parse_first_json(&text)?;
 
     // deobfuscate keys
-    let mapping = fetch_mapping()?;
+    let (mapping, mapping_source) = fetch_mapping()?;
+    dlog(
+        &app,
+        if mapping_source == "stale cache" { "warn" } else { "info" },
+        "bases",
+        format!("key mapping: {} entries ({})", mapping.len(), mapping_source),
+    );
     json = map_keys(&json, &mapping);
 
     // stash decompressed backup
@@ -819,6 +835,18 @@ pub(crate) fn decompress_save(
 
     let bases = summarize_bases(&json)?;
     let counts = count_types(&bases);
+    dlog(
+        &app,
+        "info",
+        "bases",
+        format!(
+            "loaded {} bases ({} ship, {} planet, {} objs)",
+            bases.len(),
+            counts.ship,
+            counts.planet,
+            counts.total_objs
+        ),
+    );
 
     let mut st = state.lock().map_err(|e| e.to_string())?;
     st.save_dir = Some(dir);
@@ -918,11 +946,13 @@ pub(crate) fn read_text_file(path: String) -> Result<String, String> {
 
 #[tauri::command]
 pub(crate) fn export_base(
+    app: tauri::AppHandle,
     state: tauri::State<Mutex<SaveState>>,
     idx: usize,
     out_path: Option<String>,
 ) -> Result<ExportResult, String> {
-    let (base, safe, _) = get_base(&state, idx)?;
+    use crate::logs::dlog;
+    let (base, safe, disp) = get_base(&state, idx)?;
 
     let out = match out_path {
         Some(p) => {
@@ -947,6 +977,12 @@ pub(crate) fn export_base(
     }
     let text = serde_json::to_string_pretty(&base).map_err(|e| e.to_string())?;
     fs::write(&out, &text).map_err(|e| e.to_string())?;
+    dlog(
+        &app,
+        "info",
+        "bases",
+        format!("exported '{disp}' → {} ({} KB)", out.display(), text.len() / 1024),
+    );
 
     // mirror to Base Builder folder when present (djmonkeyuk app interop)
     if let Some(home) = dirs::home_dir() {
@@ -967,11 +1003,13 @@ pub(crate) fn export_base(
 
 #[tauri::command]
 pub(crate) fn export_nmsbase(
+    app: tauri::AppHandle,
     state: tauri::State<Mutex<SaveState>>,
     idx: usize,
     out_path: Option<String>,
 ) -> Result<ExportResult, String> {
-    let (base, safe, _) = get_base(&state, idx)?;
+    use crate::logs::dlog;
+    let (base, safe, disp) = get_base(&state, idx)?;
 
     let dest = match out_path {
         Some(p) => {
@@ -1004,6 +1042,12 @@ pub(crate) fn export_nmsbase(
 
     let txt = nmsbase_text(&base)?;
     fs::write(&dest, &txt).map_err(|e| e.to_string())?;
+    dlog(
+        &app,
+        "info",
+        "bases",
+        format!("exported NMSBASE '{disp}' → {} ({} objects)", dest.display(), base.get("Objects").and_then(|o| o.as_array()).map(|a| a.len()).unwrap_or(0)),
+    );
 
     // history copy
     fs::create_dir_all(output_nmsbase_dir()).map_err(|e| e.to_string())?;
@@ -1062,11 +1106,14 @@ pub(crate) struct ImportResult {
 
 #[tauri::command]
 pub(crate) fn import_base(
+    app: tauri::AppHandle,
     state: tauri::State<Mutex<SaveState>>,
     idx: usize,
     payload: String,
 ) -> Result<ImportResult, String> {
+    use crate::logs::dlog;
     let data = normalize_import(&payload)?;
+    dlog(&app, "info", "bases", format!("import payload parsed ({} bytes)", payload.len()));
     let mut st = state.lock().map_err(|e| e.to_string())?;
     let save = st.save_json.as_mut().ok_or("no save loaded")?;
     let path = find_key_path(save, "PersistentPlayerBases").ok_or("bases not found")?;
@@ -1130,6 +1177,16 @@ pub(crate) fn import_base(
     }
     bases_arr[idx] = new_base;
 
+    dlog(
+        &app,
+        "info",
+        "bases",
+        format!(
+            "injected {} objects into slot {idx} (original backed up → {})",
+            n_objects,
+            bak.file_name().unwrap_or_default().to_string_lossy()
+        ),
+    );
     Ok(ImportResult {
         idx,
         objects: n_objects,
@@ -1139,20 +1196,35 @@ pub(crate) fn import_base(
 
 #[tauri::command]
 pub(crate) fn recompress_save(
+    app: tauri::AppHandle,
     state: tauri::State<Mutex<SaveState>>,
     mode: String,
 ) -> Result<String, String> {
+    use crate::logs::dlog;
     let st = state.lock().map_err(|e| e.to_string())?;
     let save = st.save_json.as_ref().ok_or("no save loaded")?.clone();
     let dir = st.save_dir.clone().ok_or("no save dir")?;
     let file = st.save_file.clone().ok_or("no save file")?;
     drop(st);
 
-    let mapping = fetch_mapping()?;
+    let (mapping, mapping_source) = fetch_mapping()?;
+    dlog(
+        &app,
+        if mapping_source == "stale cache" { "warn" } else { "info" },
+        "bases",
+        format!("key mapping: {} entries ({})", mapping.len(), mapping_source),
+    );
     let obfuscated = reverse_map_keys(&save, &mapping);
     let json_str =
         serde_json::to_string(&obfuscated).map_err(|e| format!("serialize: {}", e))?;
-    let (blob, _blocks) = compress_blocks(json_str.as_bytes());
+    dlog(&app, "info", "bases", format!("serialized compact JSON ({} KB)", json_str.len() / 1024));
+    let (blob, blocks) = compress_blocks(json_str.as_bytes());
+    dlog(
+        &app,
+        "info",
+        "bases",
+        format!("compressed into {blocks} LZ4 block(s) ({} KB)", blob.len() / 1024),
+    );
 
     let out = if mode == "overwrite" {
         let live = dir.join(&file);
@@ -1163,6 +1235,12 @@ pub(crate) fn recompress_save(
             .unwrap_or_else(|| "save".to_string());
         let bak = backups_save_dir().join(format!("{}_before_recompress_{}.hg", stem, timestamp()));
         fs::copy(&live, &bak).map_err(|e| format!("backup live: {}", e))?;
+        dlog(
+            &app,
+            "info",
+            "bases",
+            format!("backed up live save → {}", bak.file_name().unwrap_or_default().to_string_lossy()),
+        );
         live
     } else {
         fs::create_dir_all(output_dir()).map_err(|e| e.to_string())?;
@@ -1173,6 +1251,7 @@ pub(crate) fn recompress_save(
     let tmp = out.with_extension("tmp");
     fs::write(&tmp, &blob).map_err(|e| format!("write tmp: {}", e))?;
     fs::rename(&tmp, &out).map_err(|e| format!("rename tmp: {}", e))?;
+    dlog(&app, "info", "bases", format!("wrote {}", out.display()));
     Ok(out.to_string_lossy().to_string())
 }
 
@@ -1185,7 +1264,11 @@ pub(crate) struct BackupInfo {
 }
 
 #[tauri::command]
-pub(crate) fn backup_saves(save_dir: String) -> Result<Vec<String>, String> {
+pub(crate) fn backup_saves(
+    app: tauri::AppHandle,
+    save_dir: String,
+) -> Result<Vec<String>, String> {
+    use crate::logs::dlog;
     let dir = PathBuf::from(shellexpand(&save_dir));
     if !dir.is_dir() {
         return Err(format!("not a directory: {}", dir.display()));
@@ -1229,6 +1312,16 @@ pub(crate) fn backup_saves(save_dir: String) -> Result<Vec<String>, String> {
             ));
         }
         fs::copy(&src, &dst).map_err(|e| e.to_string())?;
+        dlog(
+            &app,
+            "info",
+            "bases",
+            format!(
+                "backed up {} → {}",
+                src.file_name().unwrap_or_default().to_string_lossy(),
+                dst.file_name().unwrap_or_default().to_string_lossy()
+            ),
+        );
         done.push(dst.to_string_lossy().to_string());
     }
     if done.is_empty() {
@@ -1291,7 +1384,13 @@ pub(crate) fn list_backups(stem: Option<String>) -> Vec<BackupInfo> {
 }
 
 #[tauri::command]
-pub(crate) fn restore_save(backup_path: String, save_dir: String, save_file: String) -> Result<String, String> {
+pub(crate) fn restore_save(
+    app: tauri::AppHandle,
+    backup_path: String,
+    save_dir: String,
+    save_file: String,
+) -> Result<String, String> {
+    use crate::logs::dlog;
     let target = PathBuf::from(shellexpand(&save_dir)).join(&save_file);
     let stem = Path::new(&save_file)
         .file_stem()
@@ -1302,8 +1401,20 @@ pub(crate) fn restore_save(backup_path: String, save_dir: String, save_file: Str
         let pre =
             backups_save_dir().join(format!("{}_pre_restore_{}.hg", stem, timestamp()));
         fs::copy(&target, &pre).map_err(|e| format!("pre-restore backup: {}", e))?;
+        dlog(
+            &app,
+            "info",
+            "bases",
+            format!("backed up live file before restore → {}", pre.file_name().unwrap_or_default().to_string_lossy()),
+        );
     }
     fs::copy(&backup_path, &target).map_err(|e| format!("restore: {}", e))?;
+    dlog(
+        &app,
+        "info",
+        "bases",
+        format!("restored '{save_file}' from {}", PathBuf::from(&backup_path).file_name().unwrap_or_default().to_string_lossy()),
+    );
     Ok(target.to_string_lossy().to_string())
 }
 
@@ -1330,7 +1441,7 @@ mod live_save_tests {
         let text = String::from_utf8(raw).expect("utf-8");
         let json: serde_json::Value = parse_first_json(&text).expect("json parse");
 
-        let mapping = fetch_mapping().expect("mapping download/cache");
+        let (mapping, _source) = fetch_mapping().expect("mapping download/cache");
         assert!(!mapping.is_empty(), "empty mapping");
 
         let mapped = map_keys(&json, &mapping);
@@ -1375,7 +1486,7 @@ mod live_save_tests {
         let raw = decompress_hg(&data).expect("lz4 decompress");
         let text = String::from_utf8(raw).expect("utf-8");
         let json: serde_json::Value = parse_first_json(&text).expect("json parse");
-        let mapping = fetch_mapping().expect("mapping");
+        let (mapping, _source) = fetch_mapping().expect("mapping");
         let mapped = map_keys(&json, &mapping);
         fs::write(
             "/tmp/rust_mapped.json",

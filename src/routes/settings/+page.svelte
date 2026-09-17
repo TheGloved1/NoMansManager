@@ -2,13 +2,14 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { open } from '@tauri-apps/plugin-dialog';
+  import { LazyStore } from '@tauri-apps/plugin-store';
   import { api } from '$lib/api';
   import { loadConfigNative, saveConfigNative } from '$lib/config';
   import type { AppConfig } from '$lib/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '$lib/components/ui/card';
 import { Button } from '$lib/components/ui/button';
+import { Input } from '$lib/components/ui/input';
 import { Label } from '$lib/components/ui/label';
-import { Switch } from '$lib/components/ui/switch';
 import * as Select from '$lib/components/ui/select';
 import * as Dialog from '$lib/components/ui/dialog';
 import { Separator } from '$lib/components/ui/separator';
@@ -39,6 +40,18 @@ import { Separator } from '$lib/components/ui/separator';
   let detected = $state<string | null>(null);
   let purgeConfirmOpen = $state(false);
   let purgeStatus = $state("");
+  let logsMaxLines = $state(2000);
+  const logsStore = new LazyStore('settings.json');
+
+  async function saveLogsMaxLines(raw: string) {
+    const n = Math.round(Number(raw));
+    if (!Number.isFinite(n)) return;
+    logsMaxLines = Math.min(10000, Math.max(500, n));
+    try {
+      await logsStore.set('logs_max_lines', logsMaxLines);
+      await logsStore.save();
+    } catch {}
+  }
 
   function apply(cfg: AppConfig) {
     document.documentElement.setAttribute('data-theme', cfg.theme);
@@ -48,6 +61,10 @@ import { Separator } from '$lib/components/ui/separator';
   onMount(async () => {
     config = await loadConfigNative();
     apply(config);
+    try {
+      const cap = await logsStore.get<number>('logs_max_lines');
+      if (typeof cap === 'number' && cap > 0) logsMaxLines = cap;
+    } catch {}
     try { detected = await api.findNmsInstall(config.game_path); } catch {}
   });
 
@@ -158,8 +175,49 @@ import { Separator } from '$lib/components/ui/separator';
             <p class="text-xs text-muted-foreground">Deploy after adding, importing, removing, renaming, or reordering mods.</p>
           </div>
           {#if config}
-            <Switch checked={config.auto_deploy} onCheckedChange={(v) => config && (config.auto_deploy = !!v)} />
+            <button
+              type="button"
+              role="switch"
+              aria-checked={config.auto_deploy}
+              aria-label="Auto-deploy"
+              title="Toggle auto-deploy"
+              onclick={() => config && (config.auto_deploy = !config.auto_deploy)}
+              class="relative inline-flex h-[18.4px] w-[32px] shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50 {config.auto_deploy
+                ? 'bg-primary'
+                : 'bg-input'}"
+            >
+              <span
+                class="pointer-events-none block size-4 rounded-full bg-background transition-transform {config.auto_deploy
+                  ? 'translate-x-[calc(100%_-_2px)]'
+                  : 'translate-x-0'}"
+              ></span>
+            </button>
           {/if}
+        </div>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
+        <CardTitle class="text-sm">Activity log</CardTitle>
+        <CardDescription>Every backend operation is recorded on the Logs page.</CardDescription>
+      </CardHeader>
+      <CardContent class="space-y-3">
+        <div class="flex items-center justify-between gap-3">
+          <div class="space-y-0.5">
+            <Label for="logs-max-lines">Kept lines</Label>
+            <p class="text-xs text-muted-foreground">Oldest entries are dropped past this (500–10000).</p>
+          </div>
+          <Input
+            id="logs-max-lines"
+            type="number"
+            min={500}
+            max={10000}
+            step={100}
+            class="h-8 w-28"
+            value={logsMaxLines}
+            oninput={(e) => saveLogsMaxLines((e.currentTarget as HTMLInputElement).value)}
+          />
         </div>
       </CardContent>
     </Card>
