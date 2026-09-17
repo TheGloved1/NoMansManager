@@ -1,6 +1,6 @@
 [package]
 name = "nomansmanager"
-version = "26.9.9"
+version = "26.9.10"
 description = "No Man's Sky Manager — Tauri + SvelteKit"
 authors = ["TheGloved1"]
 license = "MIT"

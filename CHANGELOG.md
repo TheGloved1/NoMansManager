@@ -1,3 +1,9 @@
+## [26.9.10] - 2026-09-17
+
+### Added
+
+- in-memory save cache, Load/Unload toggle, Backups manager
+
 ## [26.9.9] - 2026-09-17
 
 ### Added
