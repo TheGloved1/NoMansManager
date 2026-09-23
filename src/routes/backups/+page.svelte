@@ -8,6 +8,7 @@
   import * as Dialog from "$lib/components/ui/dialog";
   import * as Select from "$lib/components/ui/select";
   import { ArchiveRestore, DatabaseBackup, Search, Trash2 } from "lucide-svelte";
+  import PageHeader from "$lib/components/page-header.svelte";
 
   let items: ManagedBackup[] = $state([]);
   let kindFilter: "all" | "save" | "base" = $state("all");
@@ -157,17 +158,17 @@
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden bg-background text-foreground">
-  <div class="flex min-h-12 shrink-0 flex-wrap items-center gap-1.5 border-b border-border bg-card px-3 py-1.5">
-    <div class="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-      <DatabaseBackup class="size-4" />
-    </div>
-    <div class="leading-tight">
-      <div class="text-sm font-semibold tracking-tight">Backups</div>
-      <div class="font-mono text-[11px] text-muted-foreground">
-        {items.length} files · {totalSize()}
+  <PageHeader
+    wrap
+    title="Backups"
+    subtitle="{items.length} files · {totalSize()}"
+  >
+    {#snippet before()}
+      <div class="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-md shadow-primary/20">
+        <DatabaseBackup class="size-4" />
       </div>
-    </div>
-    <div class="ml-auto flex items-center gap-1.5">
+    {/snippet}
+    {#snippet right()}
       {#if confirmingClearAll}
         <Button variant="destructive" size="sm" onclick={doClearAll}>
           Clear {shown.length}?
@@ -188,8 +189,8 @@
       <Button size="sm" onclick={doBackupNow} disabled={backingUp}>
         {#if backingUp}Backing up…{:else}<DatabaseBackup class="size-3.5" />Backup now{/if}
       </Button>
-    </div>
-  </div>
+    {/snippet}
+  </PageHeader>
 
   <div class="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
     <div class="grid grid-cols-3 gap-1 rounded-lg border border-border bg-background p-1">
@@ -230,7 +231,7 @@
       </div>
     {:else}
       <table class="w-full caption-bottom text-sm">
-        <Table.Header class="sticky top-0 z-10 bg-muted">
+        <Table.Header class="sticky top-0 z-10 bg-muted/70 backdrop-blur supports-[backdrop-filter]:bg-muted/70">
           <Table.Row class="border-b border-border hover:bg-transparent">
             <Table.Head class="text-[11px] tracking-wide text-muted-foreground">Backup file</Table.Head>
             <Table.Head class="text-[11px] tracking-wide text-muted-foreground">Kind</Table.Head>

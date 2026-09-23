@@ -13,6 +13,7 @@ import { Label } from '$lib/components/ui/label';
 import * as Select from '$lib/components/ui/select';
 import * as Dialog from '$lib/components/ui/dialog';
 import { Separator } from '$lib/components/ui/separator';
+import PageHeader from '$lib/components/page-header.svelte';
 
   const themes = [
     { id: 'default', label: 'Default (NMS Dark)', desc: 'Space blue — default' },
@@ -129,15 +130,15 @@ import { Separator } from '$lib/components/ui/separator';
 </script>
 
 <div class="flex-1 bg-background text-foreground">
-  <header class="sticky top-0 z-10 flex h-14 items-center justify-between border-b bg-card px-5">
-    <div class="flex items-center gap-3">
+  <PageHeader sticky title="Settings" subtitle="Customize NoMansManager">
+    {#snippet before()}
       <Button variant="ghost" size="sm" onclick={() => goto('/')}>← Back</Button>
       <div class="h-4 w-px bg-border"></div>
-      <div class="text-sm font-semibold">Settings</div>
-      <span class="hidden sm:inline text-xs text-muted-foreground">Customize NoMansManager</span>
-    </div>
-    <div class="text-xs text-muted-foreground">{status}</div>
-  </header>
+    {/snippet}
+    {#snippet right()}
+      <div class="text-xs text-muted-foreground">{status}</div>
+    {/snippet}
+  </PageHeader>
 
   <div class="mx-auto max-w-[720px] p-6 space-y-6">
     <Card>

@@ -16,6 +16,7 @@
     saveSaveDirOverride,
   } from "$lib/bases-settings";
   import DataList from "$lib/components/data-list.svelte";
+  import PageHeader from "$lib/components/page-header.svelte";
   import { saveBasesView, takeBasesView } from "$lib/bases-store";
   import type { BasesSortDir, BasesSortKey } from "$lib/bases-settings";
   import { Button } from "$lib/components/ui/button";
@@ -693,9 +694,7 @@
   class="flex min-h-0 flex-1 flex-col overflow-hidden bg-background text-foreground"
 >
   <!-- top action bar -->
-  <div
-    class="flex min-h-12 shrink-0 flex-wrap items-center gap-1.5 border-b border-border bg-card px-3 py-1.5"
-  >
+  <PageHeader wrap>
     <button
       class="flex min-w-0 items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
       onclick={doChangeDir}
@@ -792,7 +791,7 @@
     >
       Recompress
     </Button>
-    <div class="ml-auto flex items-center gap-1.5">
+    {#snippet right()}
       {#if counts}
         <span class="hidden text-xs text-muted-foreground xl:inline"
           >{counts.ship} ship · {counts.planet} planet · {counts.total_objs.toLocaleString()}
@@ -807,8 +806,8 @@
       >
         <Settings class="size-4" />
       </Button>
-    </div>
-  </div>
+    {/snippet}
+  </PageHeader>
 
   <DataList
     columns={[

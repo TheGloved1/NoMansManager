@@ -9,6 +9,7 @@
   import { Switch } from "$lib/components/ui/switch";
   import { Label } from "$lib/components/ui/label";
   import { ScrollText, Search, Trash2, FolderOpen } from "lucide-svelte";
+  import PageHeader from "$lib/components/page-header.svelte";
 
   const settingsStore = new LazyStore("settings.json");
 
@@ -99,17 +100,17 @@
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden bg-background text-foreground">
-  <div class="flex min-h-12 shrink-0 flex-wrap items-center gap-1.5 border-b border-border bg-card px-3 py-1.5">
-    <div class="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-      <ScrollText class="size-4" />
-    </div>
-    <div class="leading-tight">
-      <div class="text-sm font-semibold tracking-tight">Logs</div>
-      <div class="font-mono text-[11px] text-muted-foreground">
-        {entries.length.toLocaleString()} / {maxLines.toLocaleString()} lines
+  <PageHeader
+    wrap
+    title="Logs"
+    subtitle="{entries.length.toLocaleString()} / {maxLines.toLocaleString()} lines"
+  >
+    {#snippet before()}
+      <div class="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-md shadow-primary/20">
+        <ScrollText class="size-4" />
       </div>
-    </div>
-    <div class="ml-auto flex items-center gap-2">
+    {/snippet}
+    {#snippet right()}
       <div class="flex items-center gap-1.5">
         <Label for="autoscroll" class="text-xs text-muted-foreground">Follow</Label>
         <Switch id="autoscroll" checked={autoScroll} onCheckedChange={(v) => (autoScroll = !!v)} />
@@ -133,8 +134,8 @@
           <Trash2 class="size-3.5" />Clear
         </Button>
       {/if}
-    </div>
-  </div>
+    {/snippet}
+  </PageHeader>
 
   <div class="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
     <div class="grid grid-cols-4 gap-1 rounded-lg border border-border bg-background p-1">

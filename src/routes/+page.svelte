@@ -11,6 +11,7 @@
   import * as Table from "$lib/components/ui/table";
   import { LoaderCircle } from "lucide-svelte";
   import DataList from "$lib/components/data-list.svelte";
+  import PageHeader from "$lib/components/page-header.svelte";
   import SortHeader from "$lib/components/sort-header.svelte";
   import { loadTableSort, saveTableSort, type SortDir } from "$lib/table-sort";
 
@@ -549,7 +550,7 @@
 </script>
 
 <div class="flex flex-1 flex-col min-w-0 bg-background overflow-hidden">
-  <div class="h-12 shrink-0 flex items-center gap-1 px-3 border-b bg-card/70 backdrop-blur supports-[backdrop-filter]:bg-card/70">
+  <PageHeader>
     <Button
       variant="default"
       size="sm"
@@ -561,7 +562,7 @@
     >
     <div class="h-6 w-px bg-border mx-1"></div>
     <Button variant="default" size="sm" onclick={doDeploy}>Deploy</Button>
-    <div class="ml-auto flex items-center gap-2">
+    {#snippet right()}
       <span class="hidden sm:inline text-xs text-muted-foreground"
         >{enabledCount}/{mods.length} enabled</span
       >
@@ -571,8 +572,8 @@
         onclick={async () => modsDir && (await api.openFolder(modsDir))}
         title="Open MODS">📁</Button
       >
-    </div>
-  </div>
+    {/snippet}
+  </PageHeader>
 
   <DataList
     columns={[

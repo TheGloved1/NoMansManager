@@ -9,6 +9,7 @@
   import { Badge } from '$lib/components/ui/badge';
   import { Separator } from '$lib/components/ui/separator';
   import * as Select from '$lib/components/ui/select';
+  import PageHeader from '$lib/components/page-header.svelte';
 
   let profiles: string[] = $state([]);
   let active: string | null = $state(null);
@@ -84,12 +85,10 @@
 </script>
 
 <div class="flex flex-1 flex-col bg-background overflow-hidden">
-  <div class="h-12 shrink-0 flex items-center justify-between border-b bg-card px-5">
-    <div>
-      <div class="text-sm font-semibold">Profiles</div>
-      <div class="text-xs text-muted-foreground">{profiles.length} profiles • {modsCount} mods in store</div>
-    </div>
-  </div>
+  <PageHeader
+    title="Profiles"
+    subtitle="{profiles.length} profiles • {modsCount} mods in store"
+  />
 
   <div class="flex-1 overflow-auto p-6">
     <div class="mx-auto max-w-[720px] space-y-6">
