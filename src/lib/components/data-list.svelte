@@ -60,16 +60,22 @@
   let dragFromKey: string | number | null = $state(null);
   let dragOverKey: string | number | null = $state(null);
   let dragOverPos: "before" | "after" | null = $state(null);
+  let scroller: HTMLDivElement | null = $state(null);
+  // Insertion-line position in scroll-content coordinates. A real overlay
+  // element: box-shadow on <tr> doesn't paint under border-collapse.
+  let indicatorTop: number | null = $state(null);
 
   function clearDrag() {
     dragFromKey = null;
     dragOverKey = null;
     dragOverPos = null;
+    indicatorTop = null;
   }
 </script>
 
 <div
-  class="min-h-0 flex-1 select-none overflow-auto"
+  bind:this={scroller}
+  class="relative min-h-0 flex-1 select-none overflow-auto"
   role="button"
   tabindex="0"
   onclick={(e) => {
@@ -82,6 +88,12 @@
     }
   }}
 >
+  {#if indicatorTop !== null}
+    <div
+      class="pointer-events-none absolute right-0 left-0 z-20 h-[2px] -translate-y-1/2 bg-primary shadow-[0_0_10px_1px_var(--color-ring)]"
+      style="top: {indicatorTop}px"
+    ></div>
+  {/if}
   {#if items.length === 0}
     {@render empty?.()}
   {:else}
@@ -135,6 +147,16 @@
               dragOverKey = keyOf(item);
               dragOverPos =
                 e.clientY < r.top + r.height / 2 ? "before" : "after";
+              // Position the overlay line at the row edge in scroll-content
+              // coordinates so it stays glued while scrolling.
+              const wrap = scroller?.getBoundingClientRect();
+              if (scroller && wrap) {
+                indicatorTop =
+                  r.top -
+                  wrap.top +
+                  scroller.scrollTop +
+                  (dragOverPos === "before" ? 0 : r.height);
+              }
             }}
             ondrop={(e) => {
               e.preventDefault();
@@ -158,11 +180,9 @@
               ? 'bg-primary/10 hover:bg-primary/20'
               : isOver
                 ? 'bg-primary/15'
-                : 'hover:bg-muted/50'} {isOver && dragOverPos === 'before'
-              ? 'shadow-[inset_0_2px_0_0_var(--color-primary)]'
-              : ''} {isOver && dragOverPos === 'after'
-              ? 'shadow-[inset_0_-2px_0_0_var(--color-primary)]'
-              : ''} {keyOf(item) === dragFromKey ? 'opacity-40' : ''}"
+                : 'hover:bg-muted/50'} {keyOf(item) === dragFromKey
+              ? 'opacity-40'
+              : ''}"
           >
             {@render row(item, selected)}
           </Table.Row>
