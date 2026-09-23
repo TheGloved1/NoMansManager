@@ -86,7 +86,7 @@
     {@render empty?.()}
   {:else}
     <table class="w-full caption-bottom text-sm">
-      <Table.Header class="sticky top-0 z-10 bg-muted">
+      <Table.Header class="sticky top-0 z-10 bg-muted/70 backdrop-blur supports-[backdrop-filter]:bg-muted/70">
         <Table.Row class="border-b border-border hover:bg-transparent">
           {#each columns as col}
             <Table.Head

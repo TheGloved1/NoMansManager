@@ -1,6 +1,19 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Geist:wght@400;500;600&family=Space+Grotesk:wght@400;500;600&family=Manrope:wght@400;500;600&family=Sora:wght@400;600&family=Outfit:wght@400;500&display=swap');
 @import 'tailwindcss';
 
+/* Tailwind v4 renders bare `border` widths in `currentColor` (near-white
+   here), which is where every harsh white divider came from. Default all
+   borders to the per-theme token so dividers are hairlines everywhere. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-border);
+  }
+}
+
 @theme {
   --color-nms-bg: #0a0f1a;
   --color-nms-panel: #111b2d;
@@ -42,6 +55,11 @@
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--color-nms-border-light); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-nms-accent-dim); }
+
+::selection {
+  background: color-mix(in srgb, var(--color-primary) 30%, transparent);
+}
 
 /* Font presets */
 [data-font="inter"] { --font-sans: 'Inter', system-ui, sans-serif; }
@@ -114,6 +132,12 @@
 
 body {
   font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
-  background: var(--color-nms-bg);
+  background:
+    radial-gradient(
+      1200px 320px at 20% -80px,
+      color-mix(in srgb, var(--color-primary) 9%, transparent),
+      transparent 70%
+    ),
+    var(--color-nms-bg);
   color: var(--color-nms-text);
 }

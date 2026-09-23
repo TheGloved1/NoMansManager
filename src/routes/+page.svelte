@@ -549,7 +549,7 @@
 </script>
 
 <div class="flex flex-1 flex-col min-w-0 bg-background overflow-hidden">
-  <div class="h-12 shrink-0 flex items-center gap-1 px-3 border-b bg-card">
+  <div class="h-12 shrink-0 flex items-center gap-1 px-3 border-b bg-card/70 backdrop-blur supports-[backdrop-filter]:bg-card/70">
     <Button
       variant="default"
       size="sm"
@@ -846,9 +846,9 @@
 
   <div class="h-21.5 shrink-0 border-t bg-card p-3">
     <div
-      class="h-full rounded-lg border border-dashed flex flex-col items-center justify-center gap-1 text-xs {isDragging
-        ? 'border-primary bg-primary/10 text-primary'
-        : 'border-muted-foreground/20 text-muted-foreground bg-muted/20'}"
+      class="h-full rounded-lg border border-dashed flex flex-col items-center justify-center gap-1 text-xs transition {isDragging
+        ? 'border-primary bg-primary/10 text-primary shadow-[0_0_28px_-8px_var(--color-ring)]'
+        : 'bg-muted/10 text-muted-foreground hover:bg-muted/20 hover:text-foreground'}"
     >
       <span class="text-lg leading-none">⬇</span>
       <span
