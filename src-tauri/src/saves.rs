@@ -466,17 +466,9 @@ fn decompress_hg(data: &[u8]) -> Result<Vec<u8>, String> {
 fn parse_first_json(s: &str) -> Result<serde_json::Value, String> {
     let mut de = serde_json::Deserializer::from_str(s);
     use serde::de::Deserialize as De;
-    match serde_json::Value::deserialize(&mut de).map_err(|e| e.to_string()) {
-        Ok(v) => Ok(v),
-        Err(e) => {
-            // tolerate trailing garbage like the Python Extra-data path
-            if e.contains("trailing characters") {
-                Err(format!("parse save json: {}", e))
-            } else {
-                Err(format!("parse save json: {}", e))
-            }
-        }
-    }
+    // A streaming deserializer reads the first complete JSON value; trailing
+    // whitespace/newlines after it are fine.
+    serde_json::Value::deserialize(&mut de).map_err(|e| format!("parse save json: {}", e))
 }
 
 fn compress_blocks(json_bytes: &[u8]) -> (Vec<u8>, usize) {
@@ -813,7 +805,16 @@ pub(crate) fn decompress_save(
     // live file (overwrite, restore) snapshots it first.
     let raw = decompress_hg(&data)?;
     dlog(&app, "info", "bases", format!("decompressed to {} KB JSON", raw.len() / 1024));
-    let text = String::from_utf8(raw).map_err(|e| format!("save is not utf-8: {}", e))?;
+    // The game itself emits a handful of non-UTF8 bytes inside string values
+    // (e.g. procedural product names with raw 0x80 bytes), so strict UTF-8
+    // validation would reject the entire save over them. Decode lossily for
+    // parsing; write-back re-serializes the parsed value anyway.
+    let lossy = String::from_utf8_lossy(&raw);
+    let replaced = lossy.matches('\u{FFFD}').count();
+    if (replaced > 0) {
+        dlog(&app, "warn", "bases", format!("save contains {} non-UTF8 byte(s) written by the game, replaced for parsing", replaced));
+    }
+    let text = lossy.into_owned();
     let mut json: serde_json::Value = parse_first_json(&text)?;
 
     // deobfuscate keys
@@ -1533,7 +1534,9 @@ mod live_save_tests {
         let (dir, file) = live_save().expect("no live save.hg found for test");
         let data = fs::read(dir.join(&file)).expect("read save.hg");
         let raw = decompress_hg(&data).expect("lz4 decompress");
-        let text = String::from_utf8(raw).expect("utf-8");
+        // The game writes a handful of non-UTF8 bytes in string values —
+        // same lossy decode as decompress_save.
+        let text = String::from_utf8_lossy(&raw).into_owned();
         let json: serde_json::Value = parse_first_json(&text).expect("json parse");
 
         let (mapping, _source) = fetch_mapping().expect("mapping download/cache");
@@ -1579,7 +1582,7 @@ mod live_save_tests {
         let (dir, file) = live_save().expect("no live save.hg found for test");
         let data = fs::read(dir.join(&file)).expect("read save.hg");
         let raw = decompress_hg(&data).expect("lz4 decompress");
-        let text = String::from_utf8(raw).expect("utf-8");
+        let text = String::from_utf8_lossy(&raw).into_owned();
         let json: serde_json::Value = parse_first_json(&text).expect("json parse");
         let (mapping, _source) = fetch_mapping().expect("mapping");
         let mapped = map_keys(&json, &mapping);
