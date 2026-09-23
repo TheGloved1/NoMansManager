@@ -1,3 +1,26 @@
+## [26.9.12] - 2026-09-23
+
+### Added
+
+- **mods**: track deployed mods with manifest and surface foreign mods
+
+### Fixed
+
+- **bases**: tolerate game-written non-UTF8 bytes when loading saves
+- **clippy**: resolve all seven lints
+- **ui**: show drop placement line when reordering mods
+- **ui**: render drop placement line as overlay in data lists
+
+### Changed
+
+- **ui**: replace harsh white dividers with theme-aware hairlines
+- **ui**: add shared PageHeader and unify all page top bars
+
+### Other
+
+- retry uploads with backoff, 30s per-file timeout
+- **security**: add LICENSE, SECURITY.md and publish hardening
+
 ## [26.9.11] - 2026-09-17
 
 ### Other
