@@ -158,9 +158,11 @@
               ? 'bg-primary/10 hover:bg-primary/20'
               : isOver
                 ? 'bg-primary/15'
-                : 'hover:bg-muted/50'} {keyOf(item) === dragFromKey
-              ? 'opacity-40'
-              : ''}"
+                : 'hover:bg-muted/50'} {isOver && dragOverPos === 'before'
+              ? 'shadow-[inset_0_2px_0_0_var(--color-primary)]'
+              : ''} {isOver && dragOverPos === 'after'
+              ? 'shadow-[inset_0_-2px_0_0_var(--color-primary)]'
+              : ''} {keyOf(item) === dragFromKey ? 'opacity-40' : ''}"
           >
             {@render row(item, selected)}
           </Table.Row>
