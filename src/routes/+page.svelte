@@ -24,6 +24,8 @@
   let selectedIds: Set<string> = $state(new Set());
   let lastSelected: string | null = $state(null);
   let deployedMap: Record<string, string> = $state({});
+  let foreignMap: Record<string, string> = $state({});
+  let foreignSelected: Set<string> = $state(new Set());
   let globalDisabled = $state(false);
   let status = $state("Ready");
   let isAdding = $state(false);
@@ -63,6 +65,19 @@
     return `${b} B`;
   }
 
+  async function refreshDeployed() {
+    if (!modsDir) return;
+    try {
+      const scan = await api.scanDeployed(modsDir);
+      deployedMap = scan.managed;
+      foreignMap = scan.foreign;
+      const valid = new Set(
+        [...foreignSelected].filter((n) => n in foreignMap),
+      );
+      if (valid.size !== foreignSelected.size) foreignSelected = valid;
+    } catch {}
+  }
+
   async function refreshGamePath() {
     try {
       config = await loadConfigNative();
@@ -76,7 +91,7 @@
     if (modsDir) {
       try {
         globalDisabled = await api.globalDisableEnabled(modsDir);
-        deployedMap = await api.scanDeployed(modsDir);
+        await refreshDeployed();
       } catch {}
     }
   }
@@ -104,10 +119,7 @@
       [...selectedIds].filter((id) => mods.some((m) => m.id === id)),
     );
     if (valid.size !== selectedIds.size) selectedIds = valid;
-    if (modsDir)
-      try {
-        deployedMap = await api.scanDeployed(modsDir);
-      } catch {}
+    await refreshDeployed();
   }
 
   let lastClickId: string | null = null;
@@ -345,7 +357,6 @@
     status = "Deploying…";
     const r = await api.deployMods(modsDir, ids, config?.deploy_mode || "auto");
     status = r.errors.length ? r.errors[0] : `Deployed ${r.deployed}`;
-    deployedMap = await api.scanDeployed(modsDir);
     await refreshMods();
   }
   async function maybeAutoDeploy() {
@@ -377,6 +388,36 @@
     if (!selectedIds.size) return;
     removeConfirmCount = selectedIds.size;
     showRemoveConfirm = true;
+  }
+
+  // --- Foreign mods (in MODS but not managed by NMM) ---
+  let foreignNames = $derived(Object.keys(foreignMap).sort((a, b) => a.localeCompare(b)));
+  let foreignBusy = $state(false);
+  function toggleForeign(name: string) {
+    const n = new Set(foreignSelected);
+    if (n.has(name)) n.delete(name);
+    else n.add(name);
+    foreignSelected = n;
+  }
+  async function importForeign(names: string[]) {
+    if (!modsDir || !names.length || foreignBusy) return;
+    foreignBusy = true;
+    status = `Importing ${names.length}…`;
+    try {
+      const r = await api.importModsSelected(modsDir, names, false);
+      if (r.imported.length && profile)
+        profile = await api.loadProfile(profile.name);
+      await refreshMods();
+      await maybeAutoDeploy();
+      status = r.imported.length
+        ? `Imported ${r.imported.length}`
+        : (`Skipped — ${r.skipped[0] ?? ""}`);
+    } catch (e: any) {
+      status = `${e}`;
+    } finally {
+      foreignBusy = false;
+      setTimeout(() => (status = "Ready"), 2500);
+    }
   }
 
   let filtered = $derived.by(() => {
@@ -650,6 +691,76 @@
       </div>
     {/snippet}
   </DataList>
+
+  {#if foreignNames.length > 0}
+    <div class="shrink-0 border-t bg-card">
+      <div class="flex items-center gap-2 px-3 pt-2 pb-1">
+        <span class="text-xs font-semibold"
+          >Unmanaged in MODS ({foreignNames.length})</span
+        >
+        <span class="text-[11px] text-muted-foreground"
+          >not deployed by NMM — select and import to manage</span
+        >
+        <div class="ml-auto flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="xs"
+            disabled={foreignBusy || foreignSelected.size === 0}
+            onclick={() => importForeign([...foreignSelected])}
+            >Import selected ({foreignSelected.size})</Button
+          >
+          <Button
+            variant="ghost"
+            size="xs"
+            disabled={foreignBusy}
+            onclick={() => importForeign(foreignNames)}>Import all</Button
+          >
+        </div>
+      </div>
+      <div class="max-h-44 overflow-y-auto px-3 pb-2">
+        <Table.Root class="text-xs">
+          <Table.Body>
+            {#each foreignNames as name}
+              {@const sel = foreignSelected.has(name)}
+              <Table.Row
+                class="cursor-pointer {sel
+                  ? 'bg-primary/10 hover:bg-primary/15'
+                  : 'hover:bg-muted/50'}"
+                onclick={() => toggleForeign(name)}
+              >
+                <Table.Cell class="w-8">
+                  <input
+                    type="checkbox"
+                    checked={sel}
+                    tabindex="-1"
+                    onchange={() => toggleForeign(name)}
+                    onclick={(e) => e.stopPropagation()}
+                    class="size-3.5 accent-current"
+                  />
+                </Table.Cell>
+                <Table.Cell class="max-w-md">
+                  <div class="truncate font-mono" title={name}>{name}</div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div class="flex justify-end">
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      disabled={foreignBusy}
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        importForeign([name]);
+                      }}>Import</Button
+                    >
+                  </div>
+                </Table.Cell>
+              </Table.Row>
+            {/each}
+          </Table.Body>
+        </Table.Root>
+      </div>
+    </div>
+  {/if}
 
   {#if selectedIds.size > 0}
     <div

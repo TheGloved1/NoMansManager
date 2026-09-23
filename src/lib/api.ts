@@ -5,6 +5,7 @@ import type {
   BaseImportResult,
   BaseSummary,
   DecompressResult,
+  DeployedScan,
   DeployResult,
   ExportResult,
   ImportResult,
@@ -51,11 +52,7 @@ async function logged<T>(
   try {
     const res = await fn();
     const suffix =
-      typeof detail === "function"
-        ? detail(res)
-        : detail
-          ? detail
-          : "";
+      typeof detail === "function" ? detail(res) : detail ? detail : "";
     void invoke("append_log", {
       level: "info",
       source,
@@ -74,59 +71,94 @@ async function logged<T>(
 
 export const api = {
   findNmsInstall: (manual?: string | null) =>
-    logged("mods", "Find game install", manual ? shortPath(manual) : undefined, () =>
-      invoke<string | null>("find_nms_install", { manual }),
+    logged(
+      "mods",
+      "Find game install",
+      manual ? shortPath(manual) : undefined,
+      () => invoke<string | null>("find_nms_install", { manual }),
     ),
   getModsDir: (gameRoot: string) =>
     logged("mods", "Resolve MODS dir", undefined, () =>
       invoke<string>("get_mods_dir", { gameRoot }),
     ),
   getStoreDir: () =>
-    logged("mods", "Resolve store dir", undefined, () => invoke<string>("get_store_dir")),
+    logged("mods", "Resolve store dir", undefined, () =>
+      invoke<string>("get_store_dir"),
+    ),
   scanStore: () =>
-    logged("mods", "Scan mod store", (res: Mod[]) => `${res.length} mods`, () =>
-      invoke<Mod[]>("scan_store"),
+    logged(
+      "mods",
+      "Scan mod store",
+      (res: Mod[]) => `${res.length} mods`,
+      () => invoke<Mod[]>("scan_store"),
     ),
   scanDeployed: (modsDir: string) =>
     logged(
       "mods",
       "Scan deployed mods",
-      (res: Record<string, string>) => `${Object.keys(res).length} deployed`,
-      () => invoke<Record<string, string>>("scan_deployed", { modsDir }),
+      (res: DeployedScan) =>
+        `${Object.keys(res.managed).length} managed, ${Object.keys(res.foreign).length} foreign`,
+      () => invoke<DeployedScan>("scan_deployed", { modsDir }),
     ),
   importMods: (modsDir: string, doMove?: boolean) =>
     logged(
       "mods",
       `Import mods${doMove ? " (move)" : ""}`,
-      (res: ImportResult) => `${res.imported.length} imported, ${res.skipped.length} skipped`,
+      (res: ImportResult) =>
+        `${res.imported.length} imported, ${res.skipped.length} skipped`,
       () => invoke<ImportResult>("import_mods", { modsDir, doMove }),
     ),
+  importModsSelected: (modsDir: string, names: string[], doMove?: boolean) =>
+    logged(
+      "mods",
+      `Import ${names.length} selected${doMove ? " (move)" : ""}`,
+      (res: ImportResult) =>
+        `${res.imported.length} imported, ${res.skipped.length} skipped`,
+      () =>
+        invoke<ImportResult>("import_mods_selected", { modsDir, names, doMove }),
+    ),
   addMods: (paths: string[]) =>
-    logged("mods", `Add ${paths.length} path(s)`, (res: ImportResult) =>
-      res.imported.length
-        ? res.imported.join(", ")
-        : (res.skipped[0] ?? "skipped"),
-    () => invoke<ImportResult>("add_mods", { paths }),
+    logged(
+      "mods",
+      `Add ${paths.length} path(s)`,
+      (res: ImportResult) =>
+        res.imported.length
+          ? res.imported.join(", ")
+          : (res.skipped[0] ?? "skipped"),
+      () => invoke<ImportResult>("add_mods", { paths }),
     ),
   deployMods: (modsDir: string, orderedIds: string[], deployMode?: string) =>
     logged(
       "mods",
       "Deploy",
       (res: DeployResult) =>
-        res.errors.length ? `errors: ${res.errors[0]}` : `${res.deployed} deployed`,
-      () => invoke<DeployResult>("deploy_mods", { modsDir, orderedIds, deployMode }),
+        res.errors.length
+          ? `errors: ${res.errors[0]}`
+          : `${res.deployed} deployed`,
+      () =>
+        invoke<DeployResult>("deploy_mods", {
+          modsDir,
+          orderedIds,
+          deployMode,
+        }),
     ),
   globalDisableEnabled: (modsDir: string) =>
     logged("mods", "Check global disable", undefined, () =>
       invoke<boolean>("global_disable_enabled", { modsDir }),
     ),
   setGlobalDisable: (modsDir: string, disable: boolean) =>
-    logged("mods", disable ? "Disable all mods" : "Re-enable mods", undefined, () =>
-      invoke<void>("set_global_disable", { modsDir, disable }),
+    logged(
+      "mods",
+      disable ? "Disable all mods" : "Re-enable mods",
+      undefined,
+      () => invoke<void>("set_global_disable", { modsDir, disable }),
     ),
   listProfiles: () =>
-    logged("mods", "List profiles", (res: string[]) => res.join(", "), () =>
-      invoke<string[]>("list_profiles"),
+    logged(
+      "mods",
+      "List profiles",
+      (res: string[]) => res.join(", "),
+      () => invoke<string[]>("list_profiles"),
     ),
   loadProfile: (name: string) =>
     logged("mods", `Load profile '${name}'`, undefined, () =>
@@ -152,13 +184,17 @@ export const api = {
       invoke<void>("rename_profile", { old, new: newName }),
     ),
   loadConfig: () =>
-    logged("app", "Load config", undefined, () => invoke<AppConfig>("load_config")),
+    logged("app", "Load config", undefined, () =>
+      invoke<AppConfig>("load_config"),
+    ),
   saveConfig: (config: AppConfig) =>
     logged("app", "Save config", undefined, () =>
       invoke<void>("save_config", { config }),
     ),
   canSymlink: () =>
-    logged("app", "Check symlink support", undefined, () => invoke<boolean>("can_symlink")),
+    logged("app", "Check symlink support", undefined, () =>
+      invoke<boolean>("can_symlink"),
+    ),
   removeStoreMod: (id: string) =>
     logged("mods", `Remove mod '${id}'`, undefined, () =>
       invoke<void>("remove_store_mod", { id }),
@@ -173,8 +209,11 @@ export const api = {
     ),
   // --- Bases (save editing) ---
   findSaveDirs: () =>
-    logged("bases", "Find save folders", (res: string[]) => `${res.length} found`, () =>
-      invoke<string[]>("find_save_dirs"),
+    logged(
+      "bases",
+      "Find save folders",
+      (res: string[]) => `${res.length} found`,
+      () => invoke<string[]>("find_save_dirs"),
     ),
   findSaveDir: (prefer?: string | null) =>
     logged(
@@ -202,7 +241,9 @@ export const api = {
       () => invoke<DecompressResult>("decompress_save", { saveDir, saveFile }),
     ),
   unloadSave: () =>
-    logged("bases", "Unload save", undefined, () => invoke<void>("unload_save")),
+    logged("bases", "Unload save", undefined, () =>
+      invoke<void>("unload_save"),
+    ),
   listBases: (filter?: string | null) =>
     logged(
       "bases",
@@ -211,12 +252,18 @@ export const api = {
       () => invoke<BaseSummary[]>("list_bases", { filter }),
     ),
   exportBase: (idx: number, outPath?: string | null) =>
-    logged("bases", `Export base (slot ${idx})`, outPath ? shortPath(outPath) : "JSON", () =>
-      invoke<ExportResult>("export_base", { idx, outPath }),
+    logged(
+      "bases",
+      `Export base (slot ${idx})`,
+      outPath ? shortPath(outPath) : "JSON",
+      () => invoke<ExportResult>("export_base", { idx, outPath }),
     ),
   exportNmsbase: (idx: number, outPath?: string | null) =>
-    logged("bases", `Export NMSBASE (slot ${idx})`, outPath ? shortPath(outPath) : undefined, () =>
-      invoke<ExportResult>("export_nmsbase", { idx, outPath }),
+    logged(
+      "bases",
+      `Export NMSBASE (slot ${idx})`,
+      outPath ? shortPath(outPath) : undefined,
+      () => invoke<ExportResult>("export_nmsbase", { idx, outPath }),
     ),
   getBaseJson: (idx: number) =>
     logged("bases", `View base (slot ${idx})`, undefined, () =>
@@ -238,12 +285,20 @@ export const api = {
       () => invoke<BaseImportResult>("import_base", { idx, payload }),
     ),
   recompressSave: (mode: string) =>
-    logged("bases", mode === "overwrite" ? "Recompress (overwrite live)" : "Recompress to output", undefined, () =>
-      invoke<string>("recompress_save", { mode }),
+    logged(
+      "bases",
+      mode === "overwrite"
+        ? "Recompress (overwrite live)"
+        : "Recompress to output",
+      undefined,
+      () => invoke<string>("recompress_save", { mode }),
     ),
   backupSaves: (saveDir: string) =>
-    logged("bases", "Back up saves", (res: string[]) => `${res.length} file(s)`, () =>
-      invoke<string[]>("backup_saves", { saveDir }),
+    logged(
+      "bases",
+      "Back up saves",
+      (res: string[]) => `${res.length} file(s)`,
+      () => invoke<string[]>("backup_saves", { saveDir }),
     ),
   listBackups: (stem?: string | null) =>
     logged(
@@ -260,8 +315,11 @@ export const api = {
       () => invoke<ManagedBackup[]>("list_all_backups"),
     ),
   deleteBackup: (path: string) =>
-    logged("bases", `Delete backup '${path.split("/").slice(-1)[0]}'`, undefined, () =>
-      invoke<void>("delete_backup", { path }),
+    logged(
+      "bases",
+      `Delete backup '${path.split("/").slice(-1)[0]}'`,
+      undefined,
+      () => invoke<void>("delete_backup", { path }),
     ),
   restoreSave: (backupPath: string, saveDir: string, saveFile: string) =>
     logged("bases", `Restore '${saveFile}'`, undefined, () =>

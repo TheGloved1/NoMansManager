@@ -34,6 +34,11 @@ export interface DeployResult {
   errors: string[];
 }
 
+export interface DeployedScan {
+  managed: Record<string, string>;
+  foreign: Record<string, string>;
+}
+
 // --- Bases (save editing) ---
 
 export interface SaveFileInfo {

@@ -341,6 +341,49 @@ pub struct DeployResult {
     pub errors: Vec<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeployedScan {
+    pub managed: HashMap<String, String>,
+    pub foreign: HashMap<String, String>,
+}
+
+/// Name of the JSON manifest in the game MODS dir listing every entry NMM
+/// deployed. Source of truth for cleanup — deployed filenames keep their
+/// `NN_` order prefixes for readability, but tracking no longer depends on them.
+pub const MANIFEST_NAME: &str = ".handled_by_nmm";
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Manifest {
+    version: u32,
+    entries: Vec<String>,
+}
+
+fn manifest_path(mods_dir: &Path) -> PathBuf {
+    mods_dir.join(MANIFEST_NAME)
+}
+
+fn read_manifest(mods_dir: &Path) -> std::collections::HashSet<String> {
+    let p = manifest_path(mods_dir);
+    let text = match fs::read_to_string(&p) {
+        Ok(t) => t,
+        Err(_) => return std::collections::HashSet::new(),
+    };
+    match serde_json::from_str::<Manifest>(&text) {
+        Ok(m) => m.entries.into_iter().collect(),
+        Err(_) => std::collections::HashSet::new(),
+    }
+}
+
+fn write_manifest(mods_dir: &Path, entries: &[String]) -> Result<(), String> {
+    let m = Manifest { version: 1, entries: entries.to_vec() };
+    let text = serde_json::to_string_pretty(&m).map_err(|e| e.to_string())?;
+    let p = manifest_path(mods_dir);
+    let tmp = p.with_extension("tmp");
+    fs::write(&tmp, text).map_err(|e| e.to_string())?;
+    fs::rename(&tmp, &p).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // --- Helpers ---
 fn mod_size(p: &Path) -> u64 {
     if p.is_file() {
@@ -804,6 +847,91 @@ fn import_mods(
 }
 
 #[tauri::command]
+fn import_mods_selected(
+    app: tauri::AppHandle,
+    mods_dir: String,
+    names: Vec<String>,
+    do_move: Option<bool>,
+) -> Result<ImportResult, String> {
+    ensure_dirs();
+    let store = store_dir();
+    fs::create_dir_all(&store).map_err(|e| e.to_string())?;
+    let mods_path = PathBuf::from(shellexpand(&mods_dir));
+    if !mods_path.exists() {
+        return Ok(ImportResult { imported: vec![], skipped: vec![format!("Mods dir not found: {}", mods_path.display())] });
+    }
+    // Only what the manifest does NOT manage may be imported — never pull
+    // our own deployed links/copies back into the store as duplicates.
+    let managed_names = read_manifest(&mods_path);
+    let wanted: std::collections::HashSet<String> = names.into_iter().collect();
+    let do_move = do_move.unwrap_or(false);
+    let re = Regex::new(r"^\d+[_-](.+)$").unwrap();
+    let mut imported = Vec::new();
+    let mut skipped = Vec::new();
+    let entries = fs::read_dir(&mods_path).map_err(|e| e.to_string())?;
+    for entry in entries.filter_map(|e| e.ok()) {
+        let child = entry.path();
+        let name = child.file_name().unwrap_or_default().to_string_lossy().to_string();
+        if !wanted.contains(&name) {
+            continue;
+        }
+        if name == "DISABLEMODS.txt" || name == MANIFEST_NAME || name.starts_with('.') {
+            skipped.push(format!("{}: not importable", name));
+            continue;
+        }
+        if managed_names.contains(&name) || is_symlink(&child) {
+            skipped.push(format!("{}: already managed (symlink)", name));
+            continue;
+        }
+        let store_name = if let Some(cap) = re.captures(&name) {
+            cap.get(1).unwrap().as_str().to_string()
+        } else {
+            name.clone()
+        };
+        let dest = store.join(&store_name);
+        if dest.exists() {
+            skipped.push(format!("{}: store already has {} (collision)", name, store_name));
+            continue;
+        }
+        let res: Result<(), String> = if child.is_file() {
+            if do_move {
+                fs::rename(&child, &dest).map_err(|e| e.to_string())
+            } else {
+                fs::copy(&child, &dest).map(|_| ()).map_err(|e| e.to_string())
+            }
+        } else if child.is_dir() {
+            if do_move {
+                fs::rename(&child, &dest).map_err(|e| e.to_string())
+            } else {
+                copy_dir_all(&child, &dest).map_err(|e| e.to_string())
+            }
+        } else {
+            Err("unknown type".into())
+        };
+        match res {
+            Ok(_) => imported.push(store_name),
+            Err(e) => skipped.push(format!("{}: failed {}", name, e)),
+        }
+    }
+    // Anything requested but not found on disk (deleted externally?).
+    for name in &wanted {
+        let on_disk = mods_path.join(name).exists() || is_symlink(&mods_path.join(name));
+        let accounted = imported.iter().any(|i| i == name)
+            || skipped.iter().any(|s| s.starts_with(&format!("{}:", name)) || s.starts_with(name));
+        if !on_disk && !accounted {
+            skipped.push(format!("{}: not found", name));
+        }
+    }
+    for name in &imported {
+        crate::logs::dlog(&app, "info", "mods", format!("imported '{name}'"));
+    }
+    for s in &skipped {
+        crate::logs::dlog(&app, "warn", "mods", format!("import skipped — {s}"));
+    }
+    Ok(ImportResult { imported, skipped })
+}
+
+#[tauri::command]
 fn add_mods(app: tauri::AppHandle, paths: Vec<String>) -> Result<ImportResult, String> {
     let res = add_mods_inner(paths)?;
     for name in &res.imported {
@@ -1005,17 +1133,29 @@ fn save_profile_inner(prof: &Profile) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn scan_deployed(mods_dir: String) -> HashMap<String, String> {
+fn scan_deployed(mods_dir: String) -> DeployedScan {
     let path = PathBuf::from(shellexpand(&mods_dir));
-    let mut map = HashMap::new();
+    let mut all: HashMap<String, String> = HashMap::new();
     if let Ok(entries) = fs::read_dir(&path) {
         for entry in entries.filter_map(|e| e.ok()) {
             let name = entry.file_name().to_string_lossy().to_string();
             if name == "DISABLEMODS.txt" || name.starts_with('.') { continue; }
-            map.insert(name.clone(), entry.path().to_string_lossy().to_string());
+            all.insert(name.clone(), entry.path().to_string_lossy().to_string());
         }
     }
-    map
+    let managed_names = read_manifest(&path);
+    // Anything the manifest claims is managed; everything else on disk is foreign.
+    // (No manifest yet — e.g. never deployed — means nothing is managed.)
+    let mut managed = HashMap::new();
+    let mut foreign = HashMap::new();
+    for (name, full) in all {
+        if managed_names.contains(&name) {
+            managed.insert(name, full);
+        } else {
+            foreign.insert(name, full);
+        }
+    }
+    DeployedScan { managed, foreign }
 }
 
 #[tauri::command]
@@ -1028,17 +1168,27 @@ fn deploy_mods(
     let mods_path = PathBuf::from(shellexpand(&mods_dir));
     fs::create_dir_all(&mods_path).map_err(|e| e.to_string())?;
     let mode = deploy_mode.unwrap_or_else(|| "auto".into());
-    let re = Regex::new(r"^\d{2,3}[_-]").unwrap();
     let mut errors = Vec::new();
-    // clear
+    // Cleanup: remove exactly what the manifest says we manage.
+    // One-time legacy fallback: if no manifest exists yet (pre-manifest
+    // deployments), also clear old `NN_`-prefixed entries and symlinks so
+    // they don't get orphaned. Afterwards the manifest is source of truth.
+    let managed_names = read_manifest(&mods_path);
+    let legacy_fallback = managed_names.is_empty() && manifest_path(&mods_path).metadata().is_err();
+    let legacy_re = Regex::new(r"^\d{2,3}[_-]").unwrap();
     if let Ok(entries) = fs::read_dir(&mods_path) {
         for entry in entries.filter_map(|e| e.ok()) {
             let p = entry.path();
             let name = p.file_name().unwrap_or_default().to_string_lossy().to_string();
-            if name == "DISABLEMODS.txt" { continue; }
-            let is_link = is_symlink(&p);
-            let has_prefix = re.is_match(&name);
-            if is_link || has_prefix {
+            if name == "DISABLEMODS.txt" || name == MANIFEST_NAME { continue; }
+            let should_remove = if managed_names.contains(&name) {
+                true
+            } else if legacy_fallback {
+                is_symlink(&p) || legacy_re.is_match(&name)
+            } else {
+                false
+            };
+            if should_remove {
                 if let Err(e) = remove_deployed(&p) {
                     errors.push(format!("cleanup {}: {}", name, e));
                 }
@@ -1051,6 +1201,7 @@ fn deploy_mods(
     // Need actual Mod objects for deploy decisions (pak vs folder)
     // For pak, need file name
     let mut deployed = 0u32;
+    let mut deployed_names: Vec<String> = Vec::new();
     for (idx, mid) in ordered_ids.iter().enumerate() {
         let src = match store_mods.get(mid) {
             Some(p) => p.clone(),
@@ -1068,10 +1219,18 @@ fn deploy_mods(
         match deploy_entry(&src, &dest, &mode) {
             Ok(how) => {
                 deployed += 1;
+                deployed_names.push(deployed_name.clone());
                 crate::logs::dlog(&app, "info", "mods", format!("deployed '{deployed_name}' via {how}"));
             }
             Err(e) => errors.push(format!("{}: {}", mid, e)),
         }
+    }
+    // Manifest is source of truth for the next cleanup: record exactly what
+    // is now on disk as managed. A failed manifest write is a loud error —
+    // without it the next deploy would leave these entries orphaned.
+    if let Err(e) = write_manifest(&mods_path, &deployed_names) {
+        errors.push(format!("manifest write failed: {}", e));
+        crate::logs::dlog(&app, "error", "mods", format!("manifest write failed — {e}"));
     }
     for e in &errors {
         crate::logs::dlog(&app, "warn", "mods", format!("deploy issue — {e}"));
@@ -1416,6 +1575,7 @@ pub fn run() {
             scan_store,
             scan_deployed,
             import_mods,
+            import_mods_selected,
             add_mods,
             deploy_mods,
             global_disable_enabled,
