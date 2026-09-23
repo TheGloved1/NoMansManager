@@ -289,7 +289,7 @@ fn list_save_files_inner(save_dir: &Path) -> Vec<SaveFileInfo> {
             mtime_ms,
         });
     }
-    out.sort_by(|a, b| b.mtime_ms.cmp(&a.mtime_ms));
+    out.sort_by_key(|b| std::cmp::Reverse(b.mtime_ms));
     out
 }
 
@@ -811,7 +811,7 @@ pub(crate) fn decompress_save(
     // parsing; write-back re-serializes the parsed value anyway.
     let lossy = String::from_utf8_lossy(&raw);
     let replaced = lossy.matches('\u{FFFD}').count();
-    if (replaced > 0) {
+    if replaced > 0 {
         dlog(&app, "warn", "bases", format!("save contains {} non-UTF8 byte(s) written by the game, replaced for parsing", replaced));
     }
     let text = lossy.into_owned();
@@ -1443,7 +1443,7 @@ pub(crate) fn list_all_backups() -> Vec<ManagedBackup> {
             }
         }
     }
-    out.sort_by(|a, b| b.modified_ms.cmp(&a.modified_ms));
+    out.sort_by_key(|b| std::cmp::Reverse(b.modified_ms));
     out
 }
 

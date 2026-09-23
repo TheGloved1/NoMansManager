@@ -56,6 +56,7 @@ fn ensure_dirs() {
 /// - settings.json (legacy file + Tauri plugin store): copy only when the new
 ///   side has no file yet, so we never clobber settings the user already made
 ///   in the renamed app.
+///
 /// Once every byte of an old location is confirmed present on the new side,
 /// the old location is removed. Anything unverified is kept, with a log line.
 fn migrate_legacy_data_dir() {
@@ -69,10 +70,8 @@ fn migrate_legacy_data_dir() {
         ("profiles", profiles_dir()),
     ] {
         let old = data_base.join(LEGACY_DATA_DIR_NAME).join(old_sub);
-        if old.is_dir() {
-            if merge_missing_entries(&old, &new_sub) {
-                eprintln!("migrated {old_sub} -> {}", new_sub.display());
-            }
+        if old.is_dir() && merge_missing_entries(&old, &new_sub) {
+            eprintln!("migrated {old_sub} -> {}", new_sub.display());
         }
     }
     // profile JSONs: repair regenerated-empty copies from the old ones
@@ -1494,7 +1493,7 @@ fn rename_store_mod_inner(id: &str, new_name: &str) -> Result<String, String> {
         .find(|x| x.id == id)
         .ok_or_else(|| format!("Mod {} not found in store", id))?;
     let src = PathBuf::from(&m.source_path);
-    let safe = safe_id(&new_name);
+    let safe = safe_id(new_name);
     let dest = if m.r#type == "pak" {
         store_dir().join(format!("{}.pak", safe))
     } else {
