@@ -47,6 +47,17 @@ Available for **Windows**, **Linux**, and **macOS**.
 ### Prerequisites
 
 - Windows, Linux, or macOS
+- [Bun](https://bun.sh/) and [Rust](https://www.rust-lang.org/) (source builds only)
+
+Linux source builds also need the Tauri system dependencies:
+
+```bash
+sudo apt-get install -y \
+  libwebkit2gtk-4.1-dev \
+  libappindicator3-dev \
+  librsvg2-dev \
+  patchelf
+```
 
 ### Installation
 
@@ -63,6 +74,24 @@ bun tauri build
 ```
 
 Requires [Bun](https://bun.sh/) and [Rust](https://www.rust-lang.org/).
+
+No `.env` file is needed to build or run the app. Release signing uses the
+`TAURI_SIGNING_PRIVATE_KEY` environment variable (provided as a GitHub Secret
+in CI, or a local env var for manual builds) — it is never committed.
+
+---
+
+## Privacy & Security
+
+- NoMansManager works fully offline except for the update check against GitHub Releases.
+- It reads/writes only: your No Man's Sky `GAMEDATA/MODS` folder, your save
+  directories, and its own app data/backups/logs. It never scans unrelated files.
+- File access goes through the Rust backend with path validation; the frontend
+  has no direct filesystem access (see `src-tauri/capabilities/default.json`).
+  The app CSP is disabled (`tauri.conf.json`) because the SvelteKit frontend is
+  fully local with no remote content — there is no inline remote script surface.
+- Found a vulnerability? Please open a private security advisory or issue at
+  [Issues](https://github.com/TheGloved1/NoMansManager/issues) instead of a public PR.
 
 ---
 
@@ -83,4 +112,4 @@ Requires [Bun](https://bun.sh/) and [Rust](https://www.rust-lang.org/).
 
 ## License
 
-- MIT — NoMansManager is free and open-source software
+- [MIT](LICENSE) — NoMansManager is free and open-source software

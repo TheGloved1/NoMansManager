@@ -16,6 +16,9 @@ build
 .env
 .env.*
 !.env.example
+keys.env
+*.pem
+*.key
 *.msi
 *.AppImage
 *.deb
